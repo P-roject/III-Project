@@ -1,56 +1,38 @@
-from datetime import datetime, timedelta
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
+from datetime import datetime, timedelta
 from jose import jwt, JWTError
-from pydantic import BaseModel
 
-# تنظیمات JWT
-SECRET_KEY = "super-secret-key-1234567890-change-in-prod"
+SECRET_KEY = "your-super-secret-jwt-key-2025-change-in-production"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
-
-# کاربران ساده (بدون bcrypt - فقط مقایسه مستقیم پسورد!)
-fake_users_db = {
-    "admin": {"username": "admin", "password": "admin123"},
-    "teacher": {"username": "teacher", "password": "teacher123"}
-}
-
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=30))
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+@auth_router.post("/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    if form_data.username == "admin" and form_data.password == "admin123":
+        token = create_access_token({"sub": form_data.username})
+        return {"access_token": token, "token_type": "bearer"}
+    raise HTTPException(status_code=401, detail="incorrect username or password")
+
+
+# این تابع مخصوص Depends است
+async def get_current_user_oauth2(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
-        if username not in fake_users_db:
-            raise HTTPException(status_code=401, detail="user not found")
+        if username is None:
+            raise HTTPException(status_code=401, detail="invalid token")
         return username
     except JWTError:
-        raise HTTPException(status_code=401, detail="token is expired or invalid")
-
-
-router = APIRouter()
-
-
-@router.post("/login", response_model=Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = fake_users_db.get(form_data.username)
-    if not user or user["password"] != form_data.password:
-        raise HTTPException(status_code=401, detail="invalid username or password")
-
-    access_token = create_access_token(data={"sub": form_data.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+        raise HTTPException(status_code=401, detail="invalid token or expired")
