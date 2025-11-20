@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
+
 from utils.database import get_db
 from ..model import Student
 from ..serializer.StudentSchema import StudentCreate, StudentUpdate, StudentResponse
@@ -10,7 +12,7 @@ router = APIRouter(prefix="/students", tags=["Students"])
 
 @router.post("/", response_model=StudentResponse, status_code=201)
 async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_db)):
-    # چک والد و کلاس
+    # ✅ بررسی والد و کلاس
     from Parent.model import Parent
     from Class.model import Class
 
@@ -22,23 +24,45 @@ async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_
     if not cls or not cls.is_active:
         raise HTTPException(status_code=404, detail="class not found")
 
+    # ایجاد دانش‌آموز
     student = Student(**payload.model_dump())
     db.add(student)
     await db.commit()
-    await db.refresh(student)
+
+    # ✅ refresh با روابط (برای جلوگیری از MissingGreenlet)
+    await db.refresh(student, ["parent", "class_"])
     return student
 
 
 @router.get("/", response_model=list[StudentResponse])
 async def get_students(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Student).where(Student.is_active.is_(True)))
+    query = (
+        select(Student)
+        .options(
+            selectinload(Student.parent),
+            selectinload(Student.class_)
+        )
+        .where(Student.is_active.is_(True))
+    )
+
+    result = await db.execute(query)
     return result.scalars().all()
 
 
 @router.get("/{student_id}", response_model=StudentResponse)
 async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
-    student = await db.get(Student, student_id)
-    if not student or not student.is_active:
+    query = (
+        select(Student)
+        .options(
+            selectinload(Student.parent),
+            selectinload(Student.class_)
+        )
+        .where(Student.id == student_id, Student.is_active.is_(True))
+    )
+
+    result = await db.execute(query)
+    student = result.scalars().first()
+    if not student:
         raise HTTPException(status_code=404, detail="student not found")
     return student
 
@@ -51,6 +75,7 @@ async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSessi
         raise HTTPException(status_code=404, detail="student not found")
 
     update_data = payload.model_dump(exclude_unset=True)
+
     if "parent_id" in update_data:
         from Parent.model import Parent
         p = await db.get(Parent, update_data["parent_id"])
@@ -67,7 +92,7 @@ async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSessi
         setattr(student, key, value)
 
     await db.commit()
-    await db.refresh(student)
+    await db.refresh(student, ["parent", "class_"])  # ✅ روابط بارگذاری شوند
     return student
 
 

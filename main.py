@@ -17,12 +17,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="FastAPIProject",
-    description="first project for fast api",
+    title="FastAPIThirdProject",
+    description="ساخت پروژه سوم برای مدیریت مدرسه",
     version="2.0",
     lifespan=lifespan
 )
-
 
 # روترهای عمومی (بدون احراز هویت)
 app.include_router(auth_router)
@@ -35,7 +34,7 @@ app.include_router(student_router, dependencies=[Depends(get_current_user_oauth2
 
 @app.get("/")
 async def root():
-    return {"message": "fastAPI third project for school"}
+    return {"message": "Welcome To The FastAPI School!"}
 
 
 if __name__ == "__main__":

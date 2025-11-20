@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
+from datetime import datetime
 
 
 class ClassCreate(BaseModel):
@@ -17,6 +18,6 @@ class ClassResponse(BaseModel):
     name: str
     teacher_name: str
     is_active: bool
-    created_at: Optional[str] = None
+    created_at: Optional[datetime] = None  # ✅ تطبیق با مدل ORM
 
     model_config = ConfigDict(from_attributes=True)
