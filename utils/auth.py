@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
-from datetime import datetime, timedelta,UTC
+from datetime import datetime, timedelta, UTC
 from jose import jwt, JWTError
 
-SECRET_KEY = "your-super-secret-jwt-key-2025-change-in-production"
+SECRET_KEY = ""  # your-super-secret-jwt-key-2025-change-in-production
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 1440
 

@@ -1,9 +1,9 @@
 import os
 import pytest
 from httpx import AsyncClient, ASGITransport
-from datetime import datetime
 from main import app
 from utils.database import Base, engine
+from datetime import datetime
 
 os.environ["TESTING"] = "True"
 pytestmark = pytest.mark.asyncio(loop_scope="session")

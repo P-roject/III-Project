@@ -20,15 +20,15 @@ app = FastAPI(
     title="FastAPIThirdProject",
     description="ساخت پروژه سوم برای مدیریت مدرسه",
     version="2.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # روترهای عمومی (بدون احراز هویت)
 app.include_router(auth_router)
 
 # روترهای محافظت‌شده (نیاز به JWT)
-app.include_router(parent_router, dependencies=[Depends(get_current_user_oauth2)])
 app.include_router(class_router, dependencies=[Depends(get_current_user_oauth2)])
+app.include_router(parent_router, dependencies=[Depends(get_current_user_oauth2)])
 app.include_router(student_router, dependencies=[Depends(get_current_user_oauth2)])
 
 

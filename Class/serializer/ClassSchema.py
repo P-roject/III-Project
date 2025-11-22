@@ -18,6 +18,6 @@ class ClassResponse(BaseModel):
     name: str
     teacher_name: str
     is_active: bool
-    created_at: Optional[datetime] = None  # ✅ تطبیق با مدل ORM
+    created_at: Optional[datetime] = None  # تطبیق با مدل ORM
 
     model_config = ConfigDict(from_attributes=True)

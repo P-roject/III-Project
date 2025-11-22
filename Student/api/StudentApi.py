@@ -2,7 +2,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
-
 from utils.database import get_db
 from ..model import Student
 from ..serializer.StudentSchema import StudentCreate, StudentUpdate, StudentResponse
@@ -12,7 +11,7 @@ router = APIRouter(prefix="/students", tags=["Students"])
 
 @router.post("/", response_model=StudentResponse, status_code=201)
 async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_db)):
-    # ✅ بررسی والد و کلاس
+    # بررسی والد و کلاس
     from Parent.model import Parent
     from Class.model import Class
 
@@ -29,7 +28,7 @@ async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_
     db.add(student)
     await db.commit()
 
-    # ✅ refresh با روابط (برای جلوگیری از MissingGreenlet)
+    # refresh با روابط (برای جلوگیری از MissingGreenlet)
     await db.refresh(student, ["parent", "class_"])
     return student
 
@@ -92,7 +91,7 @@ async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSessi
         setattr(student, key, value)
 
     await db.commit()
-    await db.refresh(student, ["parent", "class_"])  # ✅ روابط بارگذاری شوند
+    await db.refresh(student, ["parent", "class_"])
     return student
 
 
