@@ -1,11 +1,12 @@
 from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
-from utils.base_model import BaseModel
+from utils.base_model import TimestampMixin,Base
 
 
-class Student(BaseModel):
+class Student(Base, TimestampMixin):
     __tablename__ = "students"
 
+    id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     age = Column(Integer, nullable=False)
     grade = Column(Integer, nullable=False)

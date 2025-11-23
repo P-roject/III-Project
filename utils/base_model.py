@@ -1,11 +1,65 @@
-from sqlalchemy import Column, Integer, Boolean, DateTime, func
+from sqlalchemy import Column, Boolean, DateTime, func
+from sqlalchemy.orm import DeclarativeBase
+from datetime import datetime, timezone, timedelta
+import jdatetime
 from .database import Base
 
 
-class BaseModel(Base):
-    __abstract__ = True
+# class BaseModel(Base):
+#     __abstract__ = True
 
-    id = Column(Integer, primary_key=True, index=True)
+#     id = Column(Integer, primary_key=True, index=True)
+#     is_active = Column(Boolean, default=True, nullable=False)
+#     created_at = Column(DateTime(timezone=True), server_default=func.now())
+#     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+# NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW
+
+# models/base_model.py
+from sqlalchemy import Column, Integer, Boolean, DateTime, func
+from sqlalchemy.orm import DeclarativeBase
+from datetime import datetime, timezone, timedelta
+import jdatetime
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class TimestampMixin:
+    # فقط فیلدهای زمانی و وضعیت
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    created_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    # تبدیل به شمسی + وقت تهران
+    def _to_jalali_tehran(self, dt: datetime | None) -> str:
+        if not dt:
+            return "-"
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        tehran_tz = timezone(timedelta(hours=3, minutes=30))
+        dt_tehran = dt.astimezone(tehran_tz)
+        jdt = jdatetime.datetime.fromgregorian(datetime=dt_tehran)
+        return jdt.strftime("%Y/%m/%d %H:%M")
+
+    @property
+    def created_at_fa(self) -> str:
+        return self._to_jalali_tehran(self.created_at)
+
+    @property
+    def updated_at_fa(self) -> str:
+        return self._to_jalali_tehran(self.updated_at)
+
+    @property
+    def deleted_at_fa(self) -> str:
+        return self._to_jalali_tehran(self.deleted_at)

@@ -19,5 +19,8 @@ class ClassResponse(BaseModel):
     teacher_name: str
     is_active: bool
     created_at: Optional[datetime] = None  # تطبیق با مدل ORM
+    created_at_fa: str
+    updated_at_fa: str
+    deleted_at_fa: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

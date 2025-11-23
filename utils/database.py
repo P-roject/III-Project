@@ -11,7 +11,7 @@ Base = declarative_base()
 DATABASE_URL = (
     "sqlite+aiosqlite:///:memory:"
     if os.getenv("TESTING")
-    else "postgresql+asyncpg://postgres:hack55@localhost/school_fastapi"
+    else "postgresql+asyncpg://postgres:hack55@localhost:5432/school_fastapi"
 )
 
 # ساخت Engine

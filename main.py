@@ -6,6 +6,7 @@ from utils.auth import auth_router, get_current_user_oauth2
 from Class.api.ClassApi import router as class_router
 from Parent.api.ParentApi import router as parent_router
 from Student.api.StudentApi import router as student_router
+from middlewares import setup_middlewares
 
 
 @asynccontextmanager
@@ -22,6 +23,8 @@ app = FastAPI(
     version="2.0",
     lifespan=lifespan,
 )
+
+setup_middlewares(app)
 
 # روترهای عمومی (بدون احراز هویت)
 app.include_router(auth_router)

@@ -1,11 +1,12 @@
-from sqlalchemy import Column, String
+from sqlalchemy import Column, String,Integer
 from sqlalchemy.orm import relationship
-from utils.base_model import BaseModel
+from utils.base_model import TimestampMixin, Base
 
 
-class Class(BaseModel):
+class Class(Base, TimestampMixin):
     __tablename__ = "classes"
 
+    id = Column(Integer, primary_key=True, index=True)
     name = Column(String(50), nullable=False, index=True)
     teacher_name = Column(String(100), nullable=False)
 

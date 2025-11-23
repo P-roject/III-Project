@@ -1,5 +1,6 @@
 import os
 import pytest
+import random
 from httpx import AsyncClient, ASGITransport
 from main import app
 from utils.database import Base, engine
@@ -57,8 +58,15 @@ async def test_no_token_protected_route(client):
     print("Unauthorized Protected Route ✅")
 
 
+# --------------------------
+# ✅ اینجا تولید شماره موبایل تصادفی و معتبر اضافه شده
+def random_phone() -> str:
+    return f"09{random.randint(100000000, 999999999)}"
+# --------------------------
+
+
 async def test_parent_crud(auth_client):
-    resp = await auth_client.post("/parents/", json={"name": "parent test", "phone_number": "09123456789"})
+    resp = await auth_client.post("/parents/", json={"name": "parent test", "phone_number": random_phone()})
     assert resp.status_code in (200, 201)
     parent_id = resp.json()["id"]
 
@@ -73,11 +81,10 @@ async def test_parent_crud(auth_client):
 
 
 async def test_student_full_flow(auth_client):
-    p = await auth_client.post("/parents/", json={"name": "parent test", "phone_number": "09990011223"})
+    p = await auth_client.post("/parents/", json={"name": "parent test", "phone_number": random_phone()})
     assert p.status_code in (200, 201)
     parent_id = p.json()["id"]
 
-    # ✅ حالا داده کامل برای کلاس با دو فیلد ضروری
     c = await auth_client.post("/classes/", json={"name": "Math", "teacher_name": "Mr. Smith"})
     assert c.status_code in (200, 201)
     class_id = c.json()["id"]
@@ -105,11 +112,10 @@ async def test_student_full_flow(auth_client):
 
 
 async def test_age_validation(auth_client):
-    p = await auth_client.post("/parents/", json={"name": "test", "phone_number": "09000000001"})
+    p = await auth_client.post("/parents/", json={"name": "test", "phone_number": random_phone()})
     assert p.status_code in (200, 201)
     parent_id = p.json()["id"]
 
-    # ✅ اضافه کردن فیلد teacher_name
     c = await auth_client.post("/classes/", json={"name": "Science", "teacher_name": "Ms. Johnson"})
     assert c.status_code in (200, 201)
     class_id = c.json()["id"]

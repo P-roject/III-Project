@@ -35,5 +35,8 @@ class StudentResponse(BaseModel):
     is_active: bool
     parent: ParentResponse
     class_: ClassResponse
+    created_at_fa: str
+    updated_at_fa: str
+    deleted_at_fa: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
