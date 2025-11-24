@@ -1,39 +1,32 @@
+# utils/database.py
 import os
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.pool import NullPool
 
-# Base مشترک برای مدل‌ها
 Base = declarative_base()
 
-# انتخاب دیتابیس بر اساس محیط
-# در حالت تست از SQLite in-memory استفاده می‌کنیم
-# در حالت عادی (اجرا با uvicorn یا اپ) از PostgreSQL
-DATABASE_URL = (
-    "sqlite+aiosqlite:///:memory:"
-    if os.getenv("TESTING")
-    else "postgresql+asyncpg://postgres:hack55@localhost:5432/school_fastapi"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql+asyncpg://postgres:hack55@localhost:5432/school_fastapi"
 )
 
-# ساخت Engine
+# ⚙️ تنظیمات اصلی برای FastAPI
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
+    poolclass=NullPool,  # 👈 هر connection جدا و کنترلی دستی، بدون pool
 )
 
-# ساخت Session factory
-SessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False)
+AsyncSessionLocal = sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    class_=AsyncSession,
+)
 
-
-# -------------------------------
-#  تابع اصلی برای Dependency Injection در FastAPI
-# -------------------------------
 async def get_db():
-    """
-    Dependency for FastAPI endpoints.
-    Yields an async SQLAlchemy session.
-    """
-    async with SessionLocal() as session:
+    async with AsyncSessionLocal() as session:
         try:
             yield session
         finally:

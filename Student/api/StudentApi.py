@@ -1,91 +1,85 @@
+# Student/api/StudentApi.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from utils.database import get_db
+from datetime import datetime, timezone
+from typing import List
+
 from ..model import Student
 from ..serializer.StudentSchema import StudentCreate, StudentUpdate, StudentResponse
+from utils.database import get_db
 
-router = APIRouter(prefix="/students", tags=["Students"])
+# ایمپورت مدل‌های مرتبط (برای چک وجود)
+from Parent.model import Parent
+from Class.model import Class
+
+router = APIRouter(prefix="/students", tags=["دانش‌آموزان"])
 
 
 @router.post("/", response_model=StudentResponse, status_code=201)
 async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_db)):
-    # بررسی والد و کلاس
-    from Parent.model import Parent
-    from Class.model import Class
-
+    # بررسی والد و کلاس فعال باشند
     parent = await db.get(Parent, payload.parent_id)
-    if not parent or not parent.is_active:
-        raise HTTPException(status_code=404, detail="parent not found")
+    if not parent or parent.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="والد پیدا نشد یا حذف شده است")
 
     cls = await db.get(Class, payload.class_id)
-    if not cls or not cls.is_active:
-        raise HTTPException(status_code=404, detail="class not found")
+    if not cls or cls.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="کلاس پیدا نشد یا حذف شده است")
 
-    # ایجاد دانش‌آموز
     student = Student(**payload.model_dump())
     db.add(student)
     await db.commit()
-
-    # refresh با روابط (برای جلوگیری از MissingGreenlet)
     await db.refresh(student, ["parent", "class_"])
     return student
 
 
-@router.get("/", response_model=list[StudentResponse])
+@router.get("/", response_model=List[StudentResponse])
 async def get_students(db: AsyncSession = Depends(get_db)):
-    query = (
+    result = await db.execute(
         select(Student)
-        .options(
-            selectinload(Student.parent),
-            selectinload(Student.class_)
-        )
-        .where(Student.is_active.is_(True))
+        .options(selectinload(Student.parent), selectinload(Student.class_))
+        .where(Student.deleted_at.is_(None))  # فقط دانش‌آموزان حذف‌نشده
+        .order_by(Student.id.desc())
     )
-
-    result = await db.execute(query)
     return result.scalars().all()
 
 
 @router.get("/{student_id}", response_model=StudentResponse)
 async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
-    query = (
+    result = await db.execute(
         select(Student)
-        .options(
-            selectinload(Student.parent),
-            selectinload(Student.class_)
-        )
-        .where(Student.id == student_id, Student.is_active.is_(True))
+        .options(selectinload(Student.parent), selectinload(Student.class_))
+        .where(Student.id == student_id, Student.deleted_at.is_(None))
     )
-
-    result = await db.execute(query)
-    student = result.scalars().first()
+    student = result.scalar_one_or_none()
     if not student:
-        raise HTTPException(status_code=404, detail="student not found")
+        raise HTTPException(status_code=404, detail="دانش‌آموز پیدا نشد یا حذف شده است")
     return student
 
 
 @router.put("/{student_id}", response_model=StudentResponse)
 @router.patch("/{student_id}", response_model=StudentResponse)
 async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSession = Depends(get_db)):
-    student = await db.get(Student, student_id)
-    if not student or not student.is_active:
-        raise HTTPException(status_code=404, detail="student not found")
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.deleted_at.is_(None))
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="دانش‌آموز پیدا نشد یا حذف شده است")
 
     update_data = payload.model_dump(exclude_unset=True)
 
     if "parent_id" in update_data:
-        from Parent.model import Parent
         p = await db.get(Parent, update_data["parent_id"])
-        if not p or not p.is_active:
-            raise HTTPException(status_code=400, detail="invalid parent_id")
+        if not p or p.deleted_at is not None:
+            raise HTTPException(status_code=400, detail="والد معتبر نیست یا حذف شده است")
 
     if "class_id" in update_data:
-        from Class.model import Class
         c = await db.get(Class, update_data["class_id"])
-        if not c or not c.is_active:
-            raise HTTPException(status_code=400, detail="invalid class_id")
+        if not c or c.deleted_at is not None:
+            raise HTTPException(status_code=400, detail="کلاس معتبر نیست یا حذف شده است")
 
     for key, value in update_data.items():
         setattr(student, key, value)
@@ -98,10 +92,16 @@ async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSessi
 @router.delete("/{student_id}", status_code=204)
 async def soft_delete_student(student_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        update(Student)
-        .where(Student.id == student_id, Student.is_active.is_(True))
-        .values(is_active=False)
+        select(Student).where(Student.id == student_id, Student.deleted_at.is_(None))
     )
-    if result.rowcount == 0:
-        raise HTTPException(status_code=404, detail="The student has not been found or has already been dropped")
+    student = result.scalar_one_or_none()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="دانش‌آموز پیدا نشد یا قبلاً حذف شده است")
+
+    # Soft Delete کامل
+    student.deleted_at = datetime.now(timezone.utc)
+    student.is_active = False
+
     await db.commit()
+    return None  # 204 No Content
