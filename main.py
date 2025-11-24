@@ -1,4 +1,3 @@
-# main.py
 import uvicorn
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
@@ -12,8 +11,6 @@ from middlewares import setup_middlewares
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ساخت جداول دیتابیس اصلی هنگام شروع برنامه
-    # (این بخش روی تست‌ها تاثیر ندارد چون تست‌ها انجین خودشان را دارند)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -28,7 +25,6 @@ app = FastAPI(
 
 setup_middlewares(app)
 
-# --- روترها ---
 
 # 1. احراز هویت (عمومی)
 app.include_router(auth_router)

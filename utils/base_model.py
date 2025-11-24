@@ -1,4 +1,3 @@
-# utils/base_model.py
 from sqlalchemy import Column, Boolean, DateTime, func
 from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timezone, timedelta
@@ -11,17 +10,12 @@ class Base(DeclarativeBase):
 
 
 class TimestampMixin:
-    """
-    میکسین برای مدیریت تاریخ ایجاد و ویرایش.
-    """
     is_active = Column(Boolean, default=True, nullable=False)
 
     created_at = Column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    # ستون updated_at:
-    # فقط زمانی که یک ادیت واقعی روی فیلدها (مثل نام، شماره و ...) انجام شود پر می‌شود.
     updated_at = Column(
         DateTime(timezone=True),
         onupdate=func.now(),
@@ -49,23 +43,14 @@ class TimestampMixin:
 
 
 class SoftDeleteMixin:
-    """
-    میکسین برای مدیریت حذف نرم.
-    """
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     is_deleted = Column(Boolean, default=False)
 
     async def soft_delete(self, db: AsyncSession):
-        """
-        حذف نرم:
-        - is_deleted را True می‌کند.
-        - تاریخ حذف را ثبت می‌کند.
-        - جلوی آپدیت شدن updated_at را می‌گیرد.
-        """
+
         self.is_deleted = True
         self.deleted_at = datetime.now(timezone.utc)
 
-        # جلوگیری از تغییر updated_at هنگام حذف
         if hasattr(self, 'updated_at'):
             self.updated_at = self.updated_at
 
@@ -82,11 +67,6 @@ class SoftDeleteMixin:
         """
         self.is_deleted = False
 
-        # نکته مهم ۱: خط زیر حذف شد تا تاریخ حذف قبلی باقی بماند
-        # self.deleted_at = None
-
-        # نکته مهم ۲: جلوگیری از تغییر updated_at هنگام بازیابی
-        # (طبق درخواست شما که نمی‌خواهید updated_at_fa پر شود)
         if hasattr(self, 'updated_at'):
             self.updated_at = self.updated_at
 
@@ -96,7 +76,6 @@ class SoftDeleteMixin:
 
     @property
     def deleted_at_fa(self) -> str:
-        """نمایش تاریخ حذف به شمسی"""
         if not self.deleted_at:
             return "-"
 

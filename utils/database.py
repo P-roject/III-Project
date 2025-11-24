@@ -11,12 +11,11 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://postgres:hack55@localhost:5432/school_fastapi"
 )
 
-#  در حالت تست یا اپ اصلی، هر اتصال جدا و بدون pool
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
     future=True,
-    poolclass=NullPool,  # جلوگیری از اشتراک connection یا race-condition
+    poolclass=NullPool,
 )
 
 AsyncSessionLocal = sessionmaker(
@@ -27,7 +26,6 @@ AsyncSessionLocal = sessionmaker(
 
 
 async def get_db():
-
     async with AsyncSessionLocal() as session:
         try:
             yield session

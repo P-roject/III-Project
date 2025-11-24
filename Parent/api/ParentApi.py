@@ -1,4 +1,3 @@
-# Parent/api/ParentApi.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,8 +12,7 @@ router = APIRouter(prefix="/parents", tags=["parents"])
 
 @router.post("/", response_model=ParentResponse, status_code=201)
 async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db)):
-    # چک تکراری نبودن شماره (در بین فعال‌ها)
-    # اصلاح شده: استفاده از is_deleted
+
     exists = await db.execute(
         select(Parent).where(
             Parent.phone_number == payload.phone_number,
@@ -33,8 +31,7 @@ async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db
 
 @router.get("/", response_model=List[ParentResponse])
 async def get_parents(db: AsyncSession = Depends(get_db)):
-    # فقط نمایش والدینی که حذف نشده‌اند
-    # اصلاح شده: استفاده از is_deleted
+
     result = await db.execute(
         select(Parent)
         .where(Parent.is_deleted.is_(False))
@@ -45,7 +42,7 @@ async def get_parents(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{parent_id}", response_model=ParentResponse)
 async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-    # اصلاح شده: استفاده از is_deleted
+
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -58,8 +55,6 @@ async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
 @router.put("/{parent_id}", response_model=ParentResponse)
 @router.patch("/{parent_id}", response_model=ParentResponse)
 async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
-    # پیدا کردن والد فعال
-    # اصلاح شده: استفاده از is_deleted
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -69,13 +64,12 @@ async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession 
 
     update_data = payload.model_dump(exclude_unset=True)
 
-    # چک کردن یونیک بودن شماره تلفن در صورت تغییر
     if "phone_number" in update_data:
         exists = await db.execute(
             select(Parent).where(
                 Parent.phone_number == update_data["phone_number"],
                 Parent.id != parent_id,
-                Parent.is_deleted.is_(False) # اصلاح شده
+                Parent.is_deleted.is_(False)
             )
         )
         if exists.scalar_one_or_none():
@@ -91,8 +85,6 @@ async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession 
 
 @router.delete("/{parent_id}", status_code=204)
 async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-    # پیدا کردن والد (فقط اگر قبلاً حذف نشده باشد)
-    # اصلاح شده: استفاده از is_deleted
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -101,7 +93,6 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
-    # استفاده از متد استاندارد Soft Delete
     await parent.soft_delete(db)
 
     return None
@@ -112,7 +103,6 @@ async def restore_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
     """
     بازگردانی رکورد حذف شده (Restore)
     """
-    # جستجو بدون شرط is_deleted (چون می‌خواهیم همه را پیدا کنیم)
     result = await db.execute(select(Parent).where(Parent.id == parent_id))
     parent = result.scalar_one_or_none()
 
