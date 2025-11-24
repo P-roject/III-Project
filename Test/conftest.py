@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import NullPool
 from httpx import AsyncClient, ASGITransport
 from main import app
-from utils.database import Base, get_db
+from Database.database import Base, get_db
 
 TEST_DATABASE_URL = "postgresql+asyncpg://postgres:hack55@localhost:5432/school_fastapi_test"
 

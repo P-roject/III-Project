@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
 from utils.base_model import TimestampMixin, SoftDeleteMixin
-from utils.database import Base
+from Database.database import Base
 
 
 class Student(Base, TimestampMixin, SoftDeleteMixin):

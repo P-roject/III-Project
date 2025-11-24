@@ -3,8 +3,7 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from alembic import context
-from utils.database import Base
-from utils.database import engine
+from Database.database import Base
 
 # متغیر برای دسترسی به مدل‌ها
 target_metadata = Base.metadata

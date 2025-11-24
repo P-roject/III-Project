@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 
 from ..model import Class
 from ..serializer.ClassSchema import ClassCreate, ClassUpdate, ClassResponse
-from utils.database import get_db
+from Database.database import get_db
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
