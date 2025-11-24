@@ -26,7 +26,6 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     raise HTTPException(status_code=401, detail="incorrect username or password")
 
 
-# این تابع مخصوص Depends است
 async def get_current_user_oauth2(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])

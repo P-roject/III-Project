@@ -10,7 +10,7 @@ from ..model import Parent
 from ..serializer.ParentSchema import ParentCreate, ParentUpdate, ParentResponse
 from utils.database import get_db
 
-router = APIRouter(prefix="/parents", tags=["والدین"])
+router = APIRouter(prefix="/parents", tags=["parents"])
 
 
 @router.post("/", response_model=ParentResponse, status_code=201)
@@ -18,7 +18,7 @@ async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db
     # چک تکراری نبودن شماره
     exists = await db.execute(select(Parent).where(Parent.phone_number == payload.phone_number))
     if exists.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="شماره موبایل قبلاً ثبت شده است")
+        raise HTTPException(status_code=400, detail="phone number already exists")
 
     parent = Parent(**payload.model_dump())
     db.add(parent)
@@ -31,7 +31,7 @@ async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db
 async def get_parents(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Parent)
-        .where(Parent.deleted_at.is_(None))  # فقط رکوردهای حذف نشده
+        .where(Parent.deleted_at.is_(None))
         .order_by(Parent.id.desc())
     )
     return result.scalars().all()
@@ -44,7 +44,7 @@ async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
     )
     parent = result.scalar_one_or_none()
     if not parent:
-        raise HTTPException(status_code=404, detail="والد پیدا نشد یا حذف شده است")
+        raise HTTPException(status_code=404, detail="parent not found or already deleted")
     return parent
 
 
@@ -56,7 +56,7 @@ async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession 
     )
     parent = result.scalar_one_or_none()
     if not parent:
-        raise HTTPException(status_code=404, detail="والد پیدا نشد یا حذف شده است")
+        raise HTTPException(status_code=404, detail="parent not found or already deleted")
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -69,7 +69,7 @@ async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession 
             )
         )
         if exists.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="شماره موبایل قبلاً ثبت شده است")
+            raise HTTPException(status_code=400, detail="phone number already exists")
 
     for key, value in update_data.items():
         setattr(parent, key, value)
@@ -87,7 +87,7 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
     parent = result.scalar_one_or_none()
 
     if not parent:
-        raise HTTPException(status_code=404, detail="والد پیدا نشد یا قبلاً حذف شده است")
+        raise HTTPException(status_code=404, detail="parent not found or already deleted")
 
     # Soft Delete کامل
     parent.deleted_at = datetime.now(timezone.utc)

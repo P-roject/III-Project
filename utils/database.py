@@ -1,4 +1,3 @@
-# utils/database.py
 import os
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
@@ -12,7 +11,7 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://postgres:hack55@localhost:5432/school_fastapi"
 )
 
-# ✅ در حالت تست یا اپ اصلی، هر اتصال جدا و بدون pool
+#  در حالت تست یا اپ اصلی، هر اتصال جدا و بدون pool
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
@@ -28,7 +27,7 @@ AsyncSessionLocal = sessionmaker(
 
 
 async def get_db():
-    """Dependency اصلی FastAPI"""
+
     async with AsyncSessionLocal() as session:
         try:
             yield session

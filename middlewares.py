@@ -1,4 +1,3 @@
-# middlewares/core.py
 from fastapi import Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware

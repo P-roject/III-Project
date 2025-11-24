@@ -1,15 +1,13 @@
-# Class/api/ClassApi.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime, timezone
 from typing import List
-
 from ..model import Class
 from ..serializer.ClassSchema import ClassCreate, ClassUpdate, ClassResponse
 from utils.database import get_db
 
-router = APIRouter(prefix="/classes", tags=["کلاس‌ها"])
+router = APIRouter(prefix="/classes", tags=["classes"])
 
 
 @router.post("/", response_model=ClassResponse, status_code=201)
@@ -25,7 +23,7 @@ async def create_class(payload: ClassCreate, db: AsyncSession = Depends(get_db))
 async def get_classes(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Class)
-        .where(Class.deleted_at.is_(None))  # فقط کلاس‌های حذف‌نشده
+        .where(Class.deleted_at.is_(None))
         .order_by(Class.id.desc())
     )
     return result.scalars().all()
@@ -38,7 +36,7 @@ async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
     )
     cls = result.scalar_one_or_none()
     if not cls:
-        raise HTTPException(status_code=404, detail="کلاس پیدا نشد یا حذف شده است")
+        raise HTTPException(status_code=404, detail="class not found or already been deleted")
     return cls
 
 
@@ -50,7 +48,7 @@ async def update_class(class_id: int, payload: ClassUpdate, db: AsyncSession = D
     )
     cls = result.scalar_one_or_none()
     if not cls:
-        raise HTTPException(status_code=404, detail="کلاس پیدا نشد یا حذف شده است")
+        raise HTTPException(status_code=404, detail="class not found or already been deleted")
 
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -69,7 +67,7 @@ async def soft_delete_class(class_id: int, db: AsyncSession = Depends(get_db)):
     cls = result.scalar_one_or_none()
 
     if not cls:
-        raise HTTPException(status_code=404, detail="کلاس پیدا نشد یا قبلاً حذف شده است")
+        raise HTTPException(status_code=404, detail="class not found or already been deleted")
 
     # Soft Delete کامل
     cls.deleted_at = datetime.now(timezone.utc)

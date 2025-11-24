@@ -4,7 +4,6 @@ from datetime import datetime, timezone, timedelta
 import jdatetime
 from .database import Base
 
-
 # class BaseModel(Base):
 #     __abstract__ = True
 
@@ -13,7 +12,7 @@ from .database import Base
 #     created_at = Column(DateTime(timezone=True), server_default=func.now())
 #     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-# NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW NEW
+# NEW CODE FOR BASEMODEL BECAUSE OF TESTING
 
 # models/base_model.py
 from sqlalchemy import Column, Integer, Boolean, DateTime, func
@@ -27,7 +26,7 @@ class Base(DeclarativeBase):
 
 
 class TimestampMixin:
-    # فقط فیلدهای زمانی و وضعیت
+
     is_active = Column(Boolean, default=True, nullable=False)
 
     created_at = Column(
@@ -41,7 +40,6 @@ class TimestampMixin:
     )
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
-    # تبدیل به شمسی + وقت تهران
     def _to_jalali_tehran(self, dt: datetime | None) -> str:
         if not dt:
             return "-"

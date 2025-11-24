@@ -1,4 +1,3 @@
-# test_all.py
 import pytest
 import random
 from httpx import AsyncClient, ASGITransport
@@ -7,9 +6,7 @@ from utils.database import engine, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
-# ===============================
-# ✅ نسخه‌ی نهایی override_get_db — ایزوله و بدون commit
-# ===============================
+
 async def override_get_db():
     async with AsyncSession(bind=engine, expire_on_commit=False) as session:
         try:
@@ -38,9 +35,6 @@ async def clean_db_after_each_test():
         await conn.commit()
 
 
-# ============================
-# Fixtures
-# ============================
 
 @pytest.fixture(scope="function")
 async def client():
@@ -73,27 +67,26 @@ def random_phone():
 
 # ============================
 # تست‌ها
-# ============================
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_login_success(client):
     r = await client.post("/auth/login", data={"username": "admin", "password": "admin123"})
     assert r.status_code == 200
-    print("✅ Login Success:", r.json())
+    print(" Login Success:", r.json())
 
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_login_wrong_password(client):
     r = await client.post("/auth/login", data={"username": "admin", "password": "x"})
     assert r.status_code == 401
-    print("✅ Wrong Password")
+    print(" Wrong Password")
 
 
 @pytest.mark.asyncio(loop_scope="function")
 async def test_no_token_protected_route(client):
     r = await client.get("/parents/")
     assert r.status_code == 401
-    print("✅ Unauthorized Route")
+    print(" Unauthorized Route")
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -108,7 +101,7 @@ async def test_parent_crud(auth_client):
 
     r3 = await auth_client.delete(f"/parents/{pid}")
     assert r3.status_code in (200, 204)
-    print("✅ Parent CRUD completed")
+    print(" Parent CRUD completed")
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -128,7 +121,7 @@ async def test_student_full_flow(auth_client):
 
     d = await auth_client.delete(f"/students/{sid}")
     assert d.status_code in (200, 204)
-    print("✅ Student Flow OK")
+    print(" Student Flow OK")
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -144,4 +137,4 @@ async def test_age_validation(auth_client):
         json={"name": "Tiny", "age": 3, "grade": 1, "parent_id": pid, "class_id": cid},
     )
     assert s.status_code == 422
-    print("✅ Age Validation OK")
+    print(" Age Validation OK")

@@ -18,7 +18,7 @@ class ClassResponse(BaseModel):
     name: str
     teacher_name: str
     is_active: bool
-    created_at: Optional[datetime] = None  # تطبیق با مدل ORM
+    created_at: Optional[datetime] = None
     created_at_fa: str
     updated_at_fa: str
     deleted_at_fa: str | None = None
