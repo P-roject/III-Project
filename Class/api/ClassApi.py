@@ -22,10 +22,10 @@ async def create_class(payload: ClassCreate, db: AsyncSession = Depends(get_db))
 
 @router.get("/", response_model=List[ClassResponse])
 async def get_classes(db: AsyncSession = Depends(get_db)):
-    # فقط رکوردهایی که deleted_at آنها None است (حذف نشده‌اند)
+    # اصلاح شده: شرط بر اساس is_deleted است، نه deleted_at
     result = await db.execute(
         select(Class)
-        .where(Class.deleted_at.is_(None))
+        .where(Class.is_deleted.is_(False))
         .order_by(Class.id.desc())
     )
     return result.scalars().all()
@@ -33,8 +33,9 @@ async def get_classes(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{class_id}", response_model=ClassResponse)
 async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
+    # اصلاح شده: شرط بر اساس is_deleted است
     result = await db.execute(
-        select(Class).where(Class.id == class_id, Class.deleted_at.is_(None))
+        select(Class).where(Class.id == class_id, Class.is_deleted.is_(False))
     )
     cls = result.scalar_one_or_none()
     if not cls:
@@ -45,9 +46,9 @@ async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
 @router.put("/{class_id}", response_model=ClassResponse)
 @router.patch("/{class_id}", response_model=ClassResponse)
 async def update_class(class_id: int, payload: ClassUpdate, db: AsyncSession = Depends(get_db)):
-    # برای آپدیت هم باید مطمئن شویم رکورد حذف نشده است
+    # اصلاح شده: شرط بر اساس is_deleted است
     result = await db.execute(
-        select(Class).where(Class.id == class_id, Class.deleted_at.is_(None))
+        select(Class).where(Class.id == class_id, Class.is_deleted.is_(False))
     )
     cls = result.scalar_one_or_none()
     if not cls:
@@ -64,9 +65,9 @@ async def update_class(class_id: int, payload: ClassUpdate, db: AsyncSession = D
 
 @router.delete("/{class_id}", status_code=204)
 async def soft_delete_class(class_id: int, db: AsyncSession = Depends(get_db)):
-    # ابتدا پیدا کردن رکورد (فقط اگر حذف نشده باشد)
+    # اصلاح شده: پیدا کردن رکورد فعال برای حذف
     result = await db.execute(
-        select(Class).where(Class.id == class_id, Class.deleted_at.is_(None))
+        select(Class).where(Class.id == class_id, Class.is_deleted.is_(False))
     )
     cls = result.scalar_one_or_none()
 
@@ -84,15 +85,17 @@ async def restore_class(class_id: int, db: AsyncSession = Depends(get_db)):
     """
     بازگردانی رکورد حذف شده (Restore)
     """
-    # اینجا شرط deleted_at.is_(None) را برمی‌داریم چون می‌خواهیم رکورد حذف شده را پیدا کنیم
+    # اینجا همه رکوردها (چه حذف شده چه نشده) را می‌گیریم
     result = await db.execute(select(Class).where(Class.id == class_id))
     cls = result.scalar_one_or_none()
 
     if not cls:
-        raise HTTPException(status_code=404, detail="Class not found (physically deleted or never existed)")
+        raise HTTPException(status_code=404, detail="Class not found")
 
-    # اگر رکورد واقعاً حذف شده است، آن را برگردان
+    # فقط اگر واقعاً حذف شده است (is_deleted=True) بازیابی می‌کنیم
     if cls.is_deleted:
         await cls.restore(db)
+
+    # نکته: اگر رکورد از قبل فعال باشد، تغییری نمی‌کند و همان برگردانده می‌شود
 
     return cls

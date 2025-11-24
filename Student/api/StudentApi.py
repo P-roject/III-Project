@@ -17,8 +17,9 @@ router = APIRouter(prefix="/students", tags=["students"])
 @router.post("/", response_model=StudentResponse, status_code=201)
 async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_db)):
     # بررسی اینکه والد و کلاس وجود داشته باشند و حذف نشده باشند
+    # نکته: متد get به تنهایی کافی نیست چون باید is_deleted را هم چک کنیم
     parent = await db.get(Parent, payload.parent_id)
-    if not parent or parent.is_deleted:  # استفاده از پراپرتی is_deleted
+    if not parent or parent.is_deleted:
         raise HTTPException(status_code=404, detail="Parent not found or deleted")
 
     cls = await db.get(Class, payload.class_id)
@@ -35,10 +36,11 @@ async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_
 
 @router.get("/", response_model=List[StudentResponse])
 async def get_students(db: AsyncSession = Depends(get_db)):
+    # اصلاح شده: استفاده از is_deleted
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.parent), selectinload(Student.class_))
-        .where(Student.deleted_at.is_(None))
+        .where(Student.is_deleted.is_(False))
         .order_by(Student.id.desc())
     )
     return result.scalars().all()
@@ -46,10 +48,11 @@ async def get_students(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{student_id}", response_model=StudentResponse)
 async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
+    # اصلاح شده: استفاده از is_deleted
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.parent), selectinload(Student.class_))
-        .where(Student.id == student_id, Student.deleted_at.is_(None))
+        .where(Student.id == student_id, Student.is_deleted.is_(False))
     )
     student = result.scalar_one_or_none()
     if not student:
@@ -60,11 +63,11 @@ async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
 @router.put("/{student_id}", response_model=StudentResponse)
 @router.patch("/{student_id}", response_model=StudentResponse)
 async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSession = Depends(get_db)):
-    # پیدا کردن دانش‌آموز فعال
+    # پیدا کردن دانش‌آموز فعال با استفاده از is_deleted
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.parent), selectinload(Student.class_))
-        .where(Student.id == student_id, Student.deleted_at.is_(None))
+        .where(Student.id == student_id, Student.is_deleted.is_(False))
     )
     student = result.scalar_one_or_none()
     if not student:
@@ -94,8 +97,9 @@ async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSessi
 
 @router.delete("/{student_id}", status_code=204)
 async def soft_delete_student(student_id: int, db: AsyncSession = Depends(get_db)):
+    # اصلاح شده: استفاده از is_deleted
     result = await db.execute(
-        select(Student).where(Student.id == student_id, Student.deleted_at.is_(None))
+        select(Student).where(Student.id == student_id, Student.is_deleted.is_(False))
     )
     student = result.scalar_one_or_none()
 
@@ -114,7 +118,7 @@ async def restore_student(student_id: int, db: AsyncSession = Depends(get_db)):
     بازگردانی دانش‌آموز حذف شده.
     شرط: والدین و کلاس او باید هنوز فعال باشند.
     """
-    # لود کردن دانش‌آموز (حتی اگر حذف شده باشد) به همراه روابط
+    # لود کردن دانش‌آموز (همه رکوردها) به همراه روابط
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.parent), selectinload(Student.class_))
@@ -128,7 +132,6 @@ async def restore_student(student_id: int, db: AsyncSession = Depends(get_db)):
     # اگر قبلاً حذف شده، فرآیند بازیابی شروع شود
     if student.is_deleted:
         # چک کردن سلامت وابستگی‌ها قبل از بازیابی
-        # اگر والدین یا کلاس حذف شده باشند، اجازه بازیابی دانش‌آموز را نمی‌دهیم
         if student.parent and student.parent.is_deleted:
             raise HTTPException(status_code=400, detail="Cannot restore student because their Parent is deleted.")
 
