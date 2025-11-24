@@ -19,7 +19,7 @@ from sqlalchemy import Column, Integer, Boolean, DateTime, func
 from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timezone, timedelta
 import jdatetime
-
+from sqlalchemy.ext.asyncio import AsyncSession
 
 class Base(DeclarativeBase):
     pass
@@ -61,3 +61,23 @@ class TimestampMixin:
     @property
     def deleted_at_fa(self) -> str:
         return self._to_jalali_tehran(self.deleted_at)
+
+
+class SoftDeleteMixin:
+    deleted_at = Column(DateTime, nullable=True)
+    is_deleted = Column(Boolean, default=False)
+
+    # متد باید db را به عنوان ورودی بگیرد
+    async def soft_delete(self, db: AsyncSession):
+        self.deleted_at = datetime.utcnow()
+        self.is_deleted = True
+        db.add(self)
+        await db.commit()
+        await db.refresh(self)
+
+    async def restore(self, db: AsyncSession):
+        self.deleted_at = None
+        self.is_deleted = False
+        db.add(self)
+        await db.commit()
+        await db.refresh(self)

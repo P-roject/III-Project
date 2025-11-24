@@ -1,8 +1,9 @@
+# Class/api/ClassApi.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import datetime, timezone
 from typing import List
+
 from ..model import Class
 from ..serializer.ClassSchema import ClassCreate, ClassUpdate, ClassResponse
 from utils.database import get_db
@@ -21,6 +22,7 @@ async def create_class(payload: ClassCreate, db: AsyncSession = Depends(get_db))
 
 @router.get("/", response_model=List[ClassResponse])
 async def get_classes(db: AsyncSession = Depends(get_db)):
+    # فقط رکوردهایی که deleted_at آنها None است (حذف نشده‌اند)
     result = await db.execute(
         select(Class)
         .where(Class.deleted_at.is_(None))
@@ -36,19 +38,20 @@ async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
     )
     cls = result.scalar_one_or_none()
     if not cls:
-        raise HTTPException(status_code=404, detail="class not found or already been deleted")
+        raise HTTPException(status_code=404, detail="Class not found")
     return cls
 
 
 @router.put("/{class_id}", response_model=ClassResponse)
 @router.patch("/{class_id}", response_model=ClassResponse)
 async def update_class(class_id: int, payload: ClassUpdate, db: AsyncSession = Depends(get_db)):
+    # برای آپدیت هم باید مطمئن شویم رکورد حذف نشده است
     result = await db.execute(
         select(Class).where(Class.id == class_id, Class.deleted_at.is_(None))
     )
     cls = result.scalar_one_or_none()
     if not cls:
-        raise HTTPException(status_code=404, detail="class not found or already been deleted")
+        raise HTTPException(status_code=404, detail="Class not found")
 
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
@@ -61,17 +64,35 @@ async def update_class(class_id: int, payload: ClassUpdate, db: AsyncSession = D
 
 @router.delete("/{class_id}", status_code=204)
 async def soft_delete_class(class_id: int, db: AsyncSession = Depends(get_db)):
+    # ابتدا پیدا کردن رکورد (فقط اگر حذف نشده باشد)
     result = await db.execute(
         select(Class).where(Class.id == class_id, Class.deleted_at.is_(None))
     )
     cls = result.scalar_one_or_none()
 
     if not cls:
-        raise HTTPException(status_code=404, detail="class not found or already been deleted")
+        raise HTTPException(status_code=404, detail="Class not found")
 
-    # Soft Delete کامل
-    cls.deleted_at = datetime.now(timezone.utc)
-    cls.is_active = False
+    # استفاده از متد متمرکز Soft Delete
+    await cls.soft_delete(db)
 
-    await db.commit()
-    return None  # 204 No Content
+    return None
+
+
+@router.post("/{class_id}/restore", response_model=ClassResponse)
+async def restore_class(class_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    بازگردانی رکورد حذف شده (Restore)
+    """
+    # اینجا شرط deleted_at.is_(None) را برمی‌داریم چون می‌خواهیم رکورد حذف شده را پیدا کنیم
+    result = await db.execute(select(Class).where(Class.id == class_id))
+    cls = result.scalar_one_or_none()
+
+    if not cls:
+        raise HTTPException(status_code=404, detail="Class not found (physically deleted or never existed)")
+
+    # اگر رکورد واقعاً حذف شده است، آن را برگردان
+    if cls.is_deleted:
+        await cls.restore(db)
+
+    return cls

@@ -1,9 +1,10 @@
+# Student/api/StudentApi.py
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from datetime import datetime, timezone
 from typing import List
+
 from ..model import Student
 from ..serializer.StudentSchema import StudentCreate, StudentUpdate, StudentResponse
 from utils.database import get_db
@@ -15,18 +16,19 @@ router = APIRouter(prefix="/students", tags=["students"])
 
 @router.post("/", response_model=StudentResponse, status_code=201)
 async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_db)):
-    # بررسی والد و کلاس فعال باشند
+    # بررسی اینکه والد و کلاس وجود داشته باشند و حذف نشده باشند
     parent = await db.get(Parent, payload.parent_id)
-    if not parent or parent.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="parent not found or already deleted")
+    if not parent or parent.is_deleted:  # استفاده از پراپرتی is_deleted
+        raise HTTPException(status_code=404, detail="Parent not found or deleted")
 
     cls = await db.get(Class, payload.class_id)
-    if not cls or cls.deleted_at is not None:
-        raise HTTPException(status_code=404, detail="class not found or already deleted")
+    if not cls or cls.is_deleted:
+        raise HTTPException(status_code=404, detail="Class not found or deleted")
 
     student = Student(**payload.model_dump())
     db.add(student)
     await db.commit()
+    # بارگذاری روابط برای پاسخ
     await db.refresh(student, ["parent", "class_"])
     return student
 
@@ -51,31 +53,36 @@ async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
     )
     student = result.scalar_one_or_none()
     if not student:
-        raise HTTPException(status_code=404, detail="student not found or already deleted")
+        raise HTTPException(status_code=404, detail="Student not found")
     return student
 
 
 @router.put("/{student_id}", response_model=StudentResponse)
 @router.patch("/{student_id}", response_model=StudentResponse)
 async def update_student(student_id: int, payload: StudentUpdate, db: AsyncSession = Depends(get_db)):
+    # پیدا کردن دانش‌آموز فعال
     result = await db.execute(
-        select(Student).where(Student.id == student_id, Student.deleted_at.is_(None))
+        select(Student)
+        .options(selectinload(Student.parent), selectinload(Student.class_))
+        .where(Student.id == student_id, Student.deleted_at.is_(None))
     )
     student = result.scalar_one_or_none()
     if not student:
-        raise HTTPException(status_code=404, detail="student not found or already deleted")
+        raise HTTPException(status_code=404, detail="Student not found")
 
     update_data = payload.model_dump(exclude_unset=True)
 
+    # اگر والد تغییر کرد، چک کنیم والد جدید حذف نشده باشد
     if "parent_id" in update_data:
         p = await db.get(Parent, update_data["parent_id"])
-        if not p or p.deleted_at is not None:
-            raise HTTPException(status_code=400, detail="invalid parent_id or deleted")
+        if not p or p.is_deleted:
+            raise HTTPException(status_code=400, detail="Invalid parent_id or parent is deleted")
 
+    # اگر کلاس تغییر کرد، چک کنیم کلاس جدید حذف نشده باشد
     if "class_id" in update_data:
         c = await db.get(Class, update_data["class_id"])
-        if not c or c.deleted_at is not None:
-            raise HTTPException(status_code=400, detail="invalid class_id or deleted")
+        if not c or c.is_deleted:
+            raise HTTPException(status_code=400, detail="Invalid class_id or class is deleted")
 
     for key, value in update_data.items():
         setattr(student, key, value)
@@ -93,11 +100,41 @@ async def soft_delete_student(student_id: int, db: AsyncSession = Depends(get_db
     student = result.scalar_one_or_none()
 
     if not student:
-        raise HTTPException(status_code=404, detail="student not found or already deleted")
+        raise HTTPException(status_code=404, detail="Student not found")
 
-    # Soft Delete کامل
-    student.deleted_at = datetime.now(timezone.utc)
-    student.is_active = False
+    # Soft Delete استاندارد
+    await student.soft_delete(db)
 
-    await db.commit()
-    return None  # 204 No Content
+    return None
+
+
+@router.post("/{student_id}/restore", response_model=StudentResponse)
+async def restore_student(student_id: int, db: AsyncSession = Depends(get_db)):
+    """
+    بازگردانی دانش‌آموز حذف شده.
+    شرط: والدین و کلاس او باید هنوز فعال باشند.
+    """
+    # لود کردن دانش‌آموز (حتی اگر حذف شده باشد) به همراه روابط
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.parent), selectinload(Student.class_))
+        .where(Student.id == student_id)
+    )
+    student = result.scalar_one_or_none()
+
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # اگر قبلاً حذف شده، فرآیند بازیابی شروع شود
+    if student.is_deleted:
+        # چک کردن سلامت وابستگی‌ها قبل از بازیابی
+        # اگر والدین یا کلاس حذف شده باشند، اجازه بازیابی دانش‌آموز را نمی‌دهیم
+        if student.parent and student.parent.is_deleted:
+            raise HTTPException(status_code=400, detail="Cannot restore student because their Parent is deleted.")
+
+        if student.class_ and student.class_.is_deleted:
+            raise HTTPException(status_code=400, detail="Cannot restore student because their Class is deleted.")
+
+        await student.restore(db)
+
+    return student

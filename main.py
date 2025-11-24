@@ -1,3 +1,4 @@
+# main.py
 import uvicorn
 from fastapi import FastAPI, Depends
 from contextlib import asynccontextmanager
@@ -11,25 +12,28 @@ from middlewares import setup_middlewares
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ایجاد جداول هنگام استارت سرور
+    # ساخت جداول دیتابیس اصلی هنگام شروع برنامه
+    # (این بخش روی تست‌ها تاثیر ندارد چون تست‌ها انجین خودشان را دارند)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
 
 
 app = FastAPI(
-    title="FastAPIThirdProject",
-    description="ساخت پروژه سوم برای مدیریت مدرسه",
+    title="FastAPI School Project",
+    description="Project with Async Database and Soft Delete",
     version="2.0",
     lifespan=lifespan,
 )
 
 setup_middlewares(app)
 
-# روترهای عمومی (بدون احراز هویت)
+# --- روترها ---
+
+# 1. احراز هویت (عمومی)
 app.include_router(auth_router)
 
-# روترهای محافظت‌شده (نیاز به JWT)
+# 2. ماژول‌ها (محافظت شده)
 app.include_router(class_router, dependencies=[Depends(get_current_user_oauth2)])
 app.include_router(parent_router, dependencies=[Depends(get_current_user_oauth2)])
 app.include_router(student_router, dependencies=[Depends(get_current_user_oauth2)])

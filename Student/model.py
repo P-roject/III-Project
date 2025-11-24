@@ -1,9 +1,10 @@
 from sqlalchemy import Column, String, Integer, ForeignKey
 from sqlalchemy.orm import relationship
-from utils.base_model import TimestampMixin,Base
+from utils.base_model import TimestampMixin, SoftDeleteMixin
+from utils.database import Base
 
 
-class Student(Base, TimestampMixin):
+class Student(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "students"
 
     id = Column(Integer, primary_key=True, index=True)
