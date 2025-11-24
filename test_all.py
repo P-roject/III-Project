@@ -3,30 +3,48 @@ import pytest
 import random
 from httpx import AsyncClient, ASGITransport
 from main import app
-from utils.database import engine, AsyncSessionLocal, get_db
+from utils.database import engine, get_db
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
-# ====================
-# Override اصلی: transactional session
-# ====================
-
+# ===============================
+# ✅ نسخه‌ی نهایی override_get_db — ایزوله و بدون commit
+# ===============================
 async def override_get_db():
-    """
-    اتصال مستقل غیر اشتراکی با rollback بعد از پایان هر تست.
-    این مدل تمام خطاهای asyncpg concurrent transaction را می‌گیرد.
-    """
-    async with engine.begin() as conn:  # ← transaction واقعی و ایزوله
-        async_session = AsyncSession(bind=conn, expire_on_commit=False)
+    async with AsyncSession(bind=engine, expire_on_commit=False) as session:
         try:
-            yield async_session
+            yield session
         finally:
-            await async_session.close()
-            # rollback ضمنی و خودکار توسط engine.begin() انجام می‌شود
+            await session.close()
 
 
-# Fixture برای client
+@pytest.fixture(autouse=True, scope="function")
+async def clean_db_after_each_test():
+    yield
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+        DO $$
+        DECLARE
+            tbl text;
+        BEGIN
+            FOR tbl IN
+                SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+            LOOP
+                EXECUTE 'TRUNCATE TABLE ' || quote_ident(tbl) || ' RESTART IDENTITY CASCADE;';
+            END LOOP;
+        END;
+        $$;
+        """))
+        await conn.commit()
+
+
+# ============================
+# Fixtures
+# ============================
+
 @pytest.fixture(scope="function")
 async def client():
+    """Client بدون token"""
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -36,6 +54,7 @@ async def client():
 
 @pytest.fixture(scope="function")
 async def auth_token(client):
+    """ورود موفق برای دریافت توکن"""
     res = await client.post("/auth/login", data={"username": "admin", "password": "admin123"})
     assert res.status_code == 200, f"Login failed: {res.text}"
     return res.json()["access_token"]
@@ -43,6 +62,7 @@ async def auth_token(client):
 
 @pytest.fixture(scope="function")
 async def auth_client(auth_token, client):
+    """Client احراز هویت‌شده با توکن"""
     client.headers.update({"Authorization": f"Bearer {auth_token}"})
     return client
 
@@ -51,7 +71,10 @@ def random_phone():
     return f"09{random.randint(100000000, 999999999)}"
 
 
-# ========================== تست‌ها ==========================
+# ============================
+# تست‌ها
+# ============================
+
 @pytest.mark.asyncio(loop_scope="function")
 async def test_login_success(client):
     r = await client.post("/auth/login", data={"username": "admin", "password": "admin123"})
@@ -77,11 +100,11 @@ async def test_no_token_protected_route(client):
 async def test_parent_crud(auth_client):
     ph = random_phone()
     r1 = await auth_client.post("/parents/", json={"name": "Parent1", "phone_number": ph})
-    assert r1.status_code in (200, 201)
+    assert r1.status_code in (200, 201), r1.text
     pid = r1.json()["id"]
 
     r2 = await auth_client.get("/parents/")
-    assert any(p["id"] == pid for p in r2.json())
+    assert any(p["id"] == pid for p in r2.json()), "Parent not found in list"
 
     r3 = await auth_client.delete(f"/parents/{pid}")
     assert r3.status_code in (200, 204)
@@ -100,6 +123,7 @@ async def test_student_full_flow(auth_client):
         "/students/",
         json={"name": "Ali", "age": 10, "grade": 5, "parent_id": pid, "class_id": cid},
     )
+    assert stu.status_code in (200, 201), stu.text
     sid = stu.json()["id"]
 
     d = await auth_client.delete(f"/students/{sid}")
