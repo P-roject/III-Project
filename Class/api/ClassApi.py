@@ -81,9 +81,6 @@ async def soft_delete_class(class_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{class_id}/restore", response_model=ClassResponse)
 async def restore_class(class_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    بازگردانی رکورد حذف شده (Restore)
-    """
 
     result = await db.execute(select(Class).where(Class.id == class_id))
     cls = result.scalar_one_or_none()

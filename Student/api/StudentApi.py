@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
-
 from ..model import Student
 from ..serializer.StudentSchema import StudentCreate, StudentUpdate, StudentResponse
 from utils.database import get_db
@@ -103,10 +102,7 @@ async def soft_delete_student(student_id: int, db: AsyncSession = Depends(get_db
 
 @router.post("/{student_id}/restore", response_model=StudentResponse)
 async def restore_student(student_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    بازگردانی دانش‌آموز حذف شده.
-    شرط: والدین و کلاس او باید هنوز فعال باشند.
-    """
+
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.parent), selectinload(Student.class_))

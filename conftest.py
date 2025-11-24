@@ -25,7 +25,6 @@ TestingSessionLocal = sessionmaker(
 
 @pytest_asyncio.fixture(scope="function")
 async def async_db():
-    """ساخت دیتابیس تست"""
     async with test_engine.begin() as conn:
         print("\n------------ DEBUG TABLES ------------")
         print("Tables detected inside Base.metadata:", Base.metadata.tables.keys())

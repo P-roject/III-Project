@@ -4,7 +4,6 @@ from httpx import AsyncClient
 
 
 def random_phone():
-    """تولید شماره تلفن رندوم یونیک"""
     return f"09{random.randint(100000000, 999999999)}"
 
 

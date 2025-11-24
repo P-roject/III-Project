@@ -100,9 +100,7 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
 
 @router.post("/{parent_id}/restore", response_model=ParentResponse)
 async def restore_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-    """
-    بازگردانی رکورد حذف شده (Restore)
-    """
+
     result = await db.execute(select(Parent).where(Parent.id == parent_id))
     parent = result.scalar_one_or_none()
 

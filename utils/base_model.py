@@ -59,12 +59,7 @@ class SoftDeleteMixin:
         await db.refresh(self)
 
     async def restore(self, db: AsyncSession):
-        """
-        بازیابی:
-        - is_deleted را False می‌کند.
-        - deleted_at را نگه می‌دارد (پاک نمی‌کند).
-        - جلوی آپدیت شدن updated_at را می‌گیرد.
-        """
+
         self.is_deleted = False
 
         if hasattr(self, 'updated_at'):
