@@ -23,9 +23,9 @@ async def create_class(payload: ClassCreate, db: AsyncSession = Depends(get_db))
 
 @router.get("/", response_model=List[ClassResponse])
 async def get_classes(db: AsyncSession = Depends(get_db)):
+    # تغییر: حذف شرط is_deleted
     result = await db.execute(
         select(Class)
-        .where(Class.is_deleted.is_(False))
         .order_by(Class.id.desc())
     )
     return result.scalars().all()
@@ -33,8 +33,9 @@ async def get_classes(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{class_id}", response_model=ClassResponse)
 async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
+    # تغییر: حذف شرط is_deleted
     result = await db.execute(
-        select(Class).where(Class.id == class_id, Class.is_deleted.is_(False))
+        select(Class).where(Class.id == class_id)
     )
     cls = result.scalar_one_or_none()
     if not cls:
@@ -43,41 +44,44 @@ async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{class_id}", response_model=ClassResponse)
-async def patch_class(class_id: int, payload: ClassUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Class).where(Class.id == class_id, Class.is_deleted.is_(False))
-    )
-    cls = result.scalar_one_or_none()
-    if not cls:
+async def update_class_partial(class_id: int, payload: ClassUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Class).where(Class.id == class_id, Class.is_deleted.is_(False)))
+    db_class = result.scalars().first()
+    if not db_class:
         raise HTTPException(status_code=404, detail="Class not found")
 
-    # Partial update
     update_data = payload.model_dump(exclude_unset=True)
+
     for key, value in update_data.items():
-        setattr(cls, key, value)
+        setattr(db_class, key, value)
 
     await db.commit()
-    await db.refresh(cls)
-    return cls
+    await db.refresh(db_class)
+    return db_class
 
 
 @router.put("/{class_id}", response_model=ClassResponse)
-async def put_class(class_id: int, payload: ClassUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Class).where(Class.id == class_id, Class.is_deleted.is_(False))
-    )
-    cls = result.scalar_one_or_none()
-    if not cls:
+async def update_class_full(class_id: int, payload: ClassUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Class).where(Class.id == class_id, Class.is_deleted.is_(False)))
+    db_class = result.scalars().first()
+    if not db_class:
         raise HTTPException(status_code=404, detail="Class not found")
 
-    # Full update
-    update_data = payload.model_dump()
+    update_data = payload.model_dump(exclude_unset=False)
+
+    # جلوگیری از Null شدن فیلدهای اجباری
+    if update_data.get("name") is None or update_data.get("teacher_name") is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Name and Teacher Name are required for PUT request."
+        )
+
     for key, value in update_data.items():
-        setattr(cls, key, value)
+        setattr(db_class, key, value)
 
     await db.commit()
-    await db.refresh(cls)
-    return cls
+    await db.refresh(db_class)
+    return db_class
 
 
 @router.delete("/{class_id}", status_code=204)

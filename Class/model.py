@@ -1,7 +1,8 @@
-from sqlalchemy import Column, String,Integer
+from sqlalchemy import Column, String, Integer
 from sqlalchemy.orm import relationship
 from utils.base_model import TimestampMixin, SoftDeleteMixin
 from Database.database import Base
+
 
 class Class(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "classes"

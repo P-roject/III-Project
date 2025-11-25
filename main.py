@@ -25,7 +25,6 @@ app = FastAPI(
 
 setup_middlewares(app)
 
-
 # 1. احراز هویت (عمومی)
 app.include_router(auth_router)
 

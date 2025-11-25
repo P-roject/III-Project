@@ -8,8 +8,9 @@ class StudentCreate(BaseModel):
     name: str = Field(..., min_length=3)
     age: int = Field(..., ge=6, le=18)
     grade: int = Field(..., ge=1, le=12)
-    parent_id: int
-    class_id: int
+
+    parent_id: Optional[int] = None
+    class_id: Optional[int] = None
 
 
 class StudentUpdate(BaseModel):
@@ -33,8 +34,10 @@ class StudentResponse(BaseModel):
     age: int
     grade: int
     is_active: bool
-    parent: ParentResponse
-    class_: ClassResponse
+    is_deleted: bool
+    # این فیلدها باید بتوانند Null باشند
+    parent: Optional[ParentResponse] = None
+    class_: Optional[ClassResponse] = None
     created_at_fa: str
     updated_at_fa: str
     deleted_at_fa: str | None = None

@@ -32,9 +32,9 @@ async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db
 
 @router.get("/", response_model=List[ParentResponse])
 async def get_parents(db: AsyncSession = Depends(get_db)):
+    # تغییر: حذف شرط is_deleted
     result = await db.execute(
         select(Parent)
-        .where(Parent.is_deleted.is_(False))
         .order_by(Parent.id.desc())
     )
     return result.scalars().all()
@@ -42,8 +42,9 @@ async def get_parents(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{parent_id}", response_model=ParentResponse)
 async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
+    # تغییر: حذف شرط is_deleted
     result = await db.execute(
-        select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
+        select(Parent).where(Parent.id == parent_id)
     )
     parent = result.scalar_one_or_none()
     if not parent:
@@ -52,26 +53,13 @@ async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{parent_id}", response_model=ParentResponse)
-async def patch_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
-    )
-    parent = result.scalar_one_or_none()
+async def update_parent_partial(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False)))
+    parent = result.scalars().first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
     update_data = payload.model_dump(exclude_unset=True)
-
-    if "phone_number" in update_data:
-        exists = await db.execute(
-            select(Parent).where(
-                Parent.phone_number == update_data["phone_number"],
-                Parent.id != parent_id,
-                Parent.is_deleted.is_(False)
-            )
-        )
-        if exists.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Phone number already exists")
 
     for key, value in update_data.items():
         setattr(parent, key, value)
@@ -82,27 +70,20 @@ async def patch_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession =
 
 
 @router.put("/{parent_id}", response_model=ParentResponse)
-async def put_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
-    )
-    parent = result.scalar_one_or_none()
+async def update_parent_full(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False)))
+    parent = result.scalars().first()
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
-    # Full update (no exclude_unset)
-    update_data = payload.model_dump()
+    update_data = payload.model_dump(exclude_unset=False)
 
-    if "phone_number" in update_data and update_data["phone_number"]:
-        exists = await db.execute(
-            select(Parent).where(
-                Parent.phone_number == update_data["phone_number"],
-                Parent.id != parent_id,
-                Parent.is_deleted.is_(False)
-            )
+    # جلوگیری از Null شدن فیلدهای اجباری
+    if update_data.get("name") is None or update_data.get("phone_number") is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Name and Phone Number are required for PUT request."
         )
-        if exists.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail="Phone number already exists")
 
     for key, value in update_data.items():
         setattr(parent, key, value)
