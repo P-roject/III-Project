@@ -1,8 +1,8 @@
 from sqlalchemy import Column, Boolean, DateTime, func
 from sqlalchemy.orm import DeclarativeBase
 from datetime import datetime, timezone, timedelta
-import jdatetime
 from sqlalchemy.ext.asyncio import AsyncSession
+import jdatetime
 
 
 class Base(DeclarativeBase):
