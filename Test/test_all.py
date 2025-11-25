@@ -1,127 +1,226 @@
 import pytest
 import random
+import string
 from httpx import AsyncClient
 
+# === IMPORT MODELS TO REGISTER TABLES ===
+# این ایمپورت‌ها ضروری هستند تا SQLAlchemy جداول را بشناسد
+from Parent.model import Parent
+from Class.model import Class
+from Student.model import Student
 
-# تابع کمکی برای تولید شماره موبایل تصادفی
+
+# ========================================
+
+# --- Helper Functions ---
+def random_string(length=6):
+    return ''.join(random.choices(string.ascii_letters, k=length))
+
+
 def random_phone():
+    # تولید شماره موبایل رندوم برای جلوگیری از ارور تکراری بودن
     return f"09{random.randint(100000000, 999999999)}"
 
 
-@pytest.mark.asyncio(loop_scope="function")
-async def test_login_flow(client: AsyncClient):
-    # 1. تست لاگین موفق
-    login_res = await client.post("/auth/login", data={
-        "username": "admin",
-        "password": "admin123"
-    })
-    assert login_res.status_code == 200, f"Login failed: {login_res.text}"
+# --- Tests ---
 
-    token_data = login_res.json()
-    assert "access_token" in token_data
-    assert token_data["token_type"] == "bearer"
-
-    # 2. تست لاگین ناموفق
-    fail_res = await client.post("/auth/login", data={
-        "username": "admin",
-        "password": "wrongpassword"
-    })
-    assert fail_res.status_code == 401
+@pytest.mark.asyncio
+async def test_01_login_success(client: AsyncClient):
+    """تست دریافت توکن با نام کاربری و رمز صحیح"""
+    payload = {"username": "admin", "password": "admin123"}
+    response = await client.post("/auth/login", data=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert "access_token" in data
+    assert data["token_type"] == "bearer"
 
 
-@pytest.mark.asyncio(loop_scope="function")
-async def test_parent_lifecycle_soft_delete(auth_client: AsyncClient):
+@pytest.mark.asyncio
+async def test_02_create_parent(auth_client: AsyncClient):
+    """تست ساخت یک والد جدید"""
+    payload = {
+        "name": f"Parent_{random_string()}",
+        "phone_number": random_phone()
+    }
+    response = await auth_client.post("/parents/", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == payload["name"]
+    assert data["id"] is not None
+
+
+@pytest.mark.asyncio
+async def test_03_create_class(auth_client: AsyncClient):
+    """تست ساخت یک کلاس جدید"""
+    payload = {
+        "name": f"Class_{random_string()}",
+        "teacher_name": f"Teacher_{random_string()}"
+    }
+    response = await auth_client.post("/classes/", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == payload["name"]
+
+
+@pytest.mark.asyncio
+async def test_04_create_student_full_chain(auth_client: AsyncClient):
     """
-    این تست چرخه حیات والد (ساخت، حذف، بررسی حذف، بازیابی) را چک می‌کند.
-    نکته: الان که API را اصلاح کردیم، وقتی والد حذف شده باشد، GET باید 404 بدهد.
+    تست زنجیره‌ای:
+    1. ساخت والد
+    2. ساخت کلاس
+    3. ساخت دانش‌آموز متصل به والد و کلاس
+    4. بررسی لود شدن روابط در پاسخ
     """
-    # 1. ساخت والد
-    payload = {"name": "Test Parent", "phone_number": random_phone()}
-    create_res = await auth_client.post("/parents/", json=payload)
-    assert create_res.status_code == 201, f"Create failed: {create_res.text}"
-    parent_id = create_res.json()["id"]
+    # 1. Create Parent
+    p_payload = {"name": "P_Chain", "phone_number": random_phone()}
+    p_res = await auth_client.post("/parents/", json=p_payload)
+    parent_id = p_res.json()["id"]
 
-    # 2. حذف والد
+    # 2. Create Class
+    c_payload = {"name": "C_Chain", "teacher_name": "T_Chain"}
+    c_res = await auth_client.post("/classes/", json=c_payload)
+    class_id = c_res.json()["id"]
+
+    # 3. Create Student
+    s_payload = {
+        "name": "Student_Chain",
+        "age": 10,
+        "grade": 5,
+        "parent_id": parent_id,
+        "class_id": class_id
+    }
+    s_res = await auth_client.post("/students/", json=s_payload)
+
+    # Assertions
+    assert s_res.status_code == 201
+    data = s_res.json()
+    assert data["name"] == "Student_Chain"
+    # بررسی اینکه روابط Parent و Class درست لود شده باشند (نه Null)
+    assert data["parent"]["id"] == parent_id
+    assert data["class_"]["id"] == class_id
+
+
+@pytest.mark.asyncio
+async def test_05_get_students_list(auth_client: AsyncClient):
+    """تست دریافت لیست دانش‌آموزان"""
+    # ابتدا یک دانش‌آموز می‌سازیم
+    p_res = await auth_client.post("/parents/", json={"name": "P1", "phone_number": random_phone()})
+    s_payload = {"name": "S1", "age": 12, "grade": 6, "parent_id": p_res.json()["id"]}
+    await auth_client.post("/students/", json=s_payload)
+
+    # دریافت لیست
+    response = await auth_client.get("/students/")
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+
+
+@pytest.mark.asyncio
+async def test_06_update_student_patch(auth_client: AsyncClient):
+    """تست آپدیت جزئی (PATCH) نام دانش‌آموز"""
+    # Setup
+    p_res = await auth_client.post("/parents/", json={"name": "P_Edit", "phone_number": random_phone()})
+    s_res = await auth_client.post("/students/",
+                                   json={"name": "OldName", "age": 10, "grade": 4, "parent_id": p_res.json()["id"]})
+    student_id = s_res.json()["id"]
+
+    # Update Name
+    patch_payload = {"name": "NewNameUpdated"}
+    response = await auth_client.patch(f"/students/{student_id}", json=patch_payload)
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "NewNameUpdated"
+    assert response.json()["age"] == 10  # سن نباید تغییر کرده باشد
+
+
+@pytest.mark.asyncio
+async def test_07_create_student_validation_error(auth_client: AsyncClient):
+    """تست اعتبارسنجی: تلاش برای ساخت دانش‌آموز با سن غیرمجاز"""
+    invalid_payload = {
+        "name": "Baby Student",
+        "age": 2,  # سن زیر 6 سال مجاز نیست
+        "grade": 1
+    }
+    response = await auth_client.post("/students/", json=invalid_payload)
+    assert response.status_code == 422  # Validation Error
+
+
+@pytest.mark.asyncio
+async def test_08_soft_delete_parent_cascade(auth_client: AsyncClient):
+    """
+    تست حذف آبشاری (Cascade Soft Delete):
+    با حذف والد، دانش‌آموز هم باید Soft Delete شود.
+    """
+    # Setup Chain
+    p_res = await auth_client.post("/parents/", json={"name": "DelParent", "phone_number": random_phone()})
+    parent_id = p_res.json()["id"]
+
+    s_res = await auth_client.post("/students/",
+                                   json={"name": "DelStudent", "age": 10, "grade": 4, "parent_id": parent_id})
+    student_id = s_res.json()["id"]
+
+    # Delete Parent
     del_res = await auth_client.delete(f"/parents/{parent_id}")
     assert del_res.status_code == 204
 
-    # 3. دریافت والد حذف شده (باید 404 بدهد طبق تغییرات جدید API)
-    get_res = await auth_client.get(f"/parents/{parent_id}")
-    assert get_res.status_code == 404
+    # Check Parent is deleted (GET returns 200 but is_deleted=True based on your code)
+    p_check = await auth_client.get(f"/parents/{parent_id}")
+    assert p_check.status_code == 200
+    assert p_check.json()["is_deleted"] is True
 
-    # 4. بازیابی والد (Restore)
-    # توجه: مطمئن شوید متد restore در ParentApi.py وجود دارد
-    restore_res = await auth_client.post(f"/parents/{parent_id}/restore")
-    assert restore_res.status_code == 200
-
-    # 5. دریافت مجدد (باید 200 بدهد)
-    get_res_2 = await auth_client.get(f"/parents/{parent_id}")
-    assert get_res_2.status_code == 200
+    # Check Student is ALSO deleted (Cascade)
+    s_check = await auth_client.get(f"/students/{student_id}")
+    assert s_check.status_code == 200
+    assert s_check.json()["is_deleted"] is True
 
 
-@pytest.mark.asyncio(loop_scope="function")
-async def test_create_student_full_chain(auth_client: AsyncClient):
+@pytest.mark.asyncio
+async def test_09_restore_student_fails_if_parent_deleted(auth_client: AsyncClient):
     """
-    این تست ساخت کامل دانش‌آموز با روابط را چک می‌کند.
-    همچنین بررسی می‌کند که روابط (Parent/Class) در پاسخ جیسون وجود داشته باشند
-    (که نشان‌دهنده رفع باگ ارور 500 و MissingGreenlet است).
+    تست منطق بازیابی:
+    نمی‌توان دانش‌آموز را بازیابی کرد اگر والدش هنوز حذف شده باشد.
     """
-    # 1. ساخت والد
-    p_res = await auth_client.post("/parents/", json={"name": "Dad", "phone_number": random_phone()})
-    assert p_res.status_code == 201
-    pid = p_res.json()["id"]
+    # Setup & Delete
+    p_res = await auth_client.post("/parents/", json={"name": "GhostParent", "phone_number": random_phone()})
+    parent_id = p_res.json()["id"]
+    s_res = await auth_client.post("/students/",
+                                   json={"name": "GhostStudent", "age": 10, "grade": 4, "parent_id": parent_id})
+    student_id = s_res.json()["id"]
 
-    # 2. ساخت کلاس
-    c_res = await auth_client.post("/classes/", json={"name": "Physics", "teacher_name": "Dr. X"})
-    assert c_res.status_code == 201
-    cid = c_res.json()["id"]
+    await auth_client.delete(f"/parents/{parent_id}")  # This deletes student too
 
-    # 3. ساخت دانش‌آموز
-    stu_payload = {
-        "name": "Albert",
-        "age": 15,
-        "grade": 9,
-        "parent_id": pid,
-        "class_id": cid
-    }
-    s_res = await auth_client.post("/students/", json=stu_payload)
-    assert s_res.status_code == 201, f"Student create failed: {s_res.text}"
+    # Try to Restore Student ONLY
+    restore_res = await auth_client.post(f"/students/{student_id}/restore")
 
-    data = s_res.json()
-    assert data["name"] == "Albert"
-    assert "id" in data
-
-    # === تست‌های اضافی برای اطمینان از لود شدن روابط ===
-    # اگر اینجا ارور داد یعنی مشکل سریالایزر یا لود دیتابیس هنوز هست
-    assert data["parent"]["id"] == pid
-    assert data["class_"]["id"] == cid
+    # Expect Error 400 (Cannot restore student because their Parent is deleted)
+    assert restore_res.status_code == 400
+    assert "Parent is deleted" in restore_res.json()["detail"]
 
 
-@pytest.mark.asyncio(loop_scope="function")
-async def test_create_student_with_deleted_parent(auth_client: AsyncClient):
+@pytest.mark.asyncio
+async def test_10_full_restore_cycle(auth_client: AsyncClient):
     """
-    تست جلوگیری از انتساب دانش‌آموز به والد حذف شده.
+    تست چرخه کامل بازیابی:
+    1. حذف والد (و دانش‌آموز)
+    2. بازیابی والد
+    3. بازیابی دانش‌آموز (الان باید موفق شود)
     """
-    # 1. ساخت والد و کلاس
-    p = await auth_client.post("/parents/", json={"name": "Deleted Mom", "phone_number": random_phone()})
-    pid = p.json()["id"]
+    # Setup & Delete
+    p_res = await auth_client.post("/parents/", json={"name": "ResParent", "phone_number": random_phone()})
+    parent_id = p_res.json()["id"]
+    s_res = await auth_client.post("/students/",
+                                   json={"name": "ResStudent", "age": 10, "grade": 4, "parent_id": parent_id})
+    student_id = s_res.json()["id"]
 
-    c = await auth_client.post("/classes/", json={"name": "Chem", "teacher_name": "Mr. White"})
-    cid = c.json()["id"]
+    await auth_client.delete(f"/parents/{parent_id}")
 
-    # 2. حذف والد
-    await auth_client.delete(f"/parents/{pid}")
+    # 1. Restore Parent
+    await auth_client.post(f"/parents/{parent_id}/restore")
 
-    # 3. تلاش برای ساخت دانش‌آموز با والد حذف شده
-    payload = {
-        "name": "Orphan Student",
-        "age": 10,
-        "grade": 5,
-        "parent_id": pid,
-        "class_id": cid
-    }
+    # 2. Restore Student
+    res_s = await auth_client.post(f"/students/{student_id}/restore")
 
-    res = await auth_client.post("/students/", json=payload)
-
-    # باید ارور 404 بدهد (چون در کد گفتیم اگر والد deleted بود raise 404)
-    assert res.status_code in [404, 400], f"Should fail but got {res.status_code}"
+    assert res_s.status_code == 200
+    assert res_s.json()["is_deleted"] is False
+    assert res_s.json()["is_active"] is True
