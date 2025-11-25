@@ -4,6 +4,8 @@ from sqlalchemy import select
 from typing import List
 
 from ..model import Parent
+# ایمپورت کردن مدل Student برای حذف آبشاری
+from Student.model import Student
 from ..serializer.ParentSchema import ParentCreate, ParentUpdate, ParentResponse
 from Database.database import get_db
 
@@ -12,7 +14,6 @@ router = APIRouter(prefix="/parents", tags=["parents"])
 
 @router.post("/", response_model=ParentResponse, status_code=201)
 async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db)):
-
     exists = await db.execute(
         select(Parent).where(
             Parent.phone_number == payload.phone_number,
@@ -31,7 +32,6 @@ async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db
 
 @router.get("/", response_model=List[ParentResponse])
 async def get_parents(db: AsyncSession = Depends(get_db)):
-
     result = await db.execute(
         select(Parent)
         .where(Parent.is_deleted.is_(False))
@@ -42,7 +42,6 @@ async def get_parents(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{parent_id}", response_model=ParentResponse)
 async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -52,9 +51,8 @@ async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
     return parent
 
 
-@router.put("/{parent_id}", response_model=ParentResponse)
 @router.patch("/{parent_id}", response_model=ParentResponse)
-async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
+async def patch_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -83,8 +81,40 @@ async def update_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession 
     return parent
 
 
+@router.put("/{parent_id}", response_model=ParentResponse)
+async def put_parent(parent_id: int, payload: ParentUpdate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
+    )
+    parent = result.scalar_one_or_none()
+    if not parent:
+        raise HTTPException(status_code=404, detail="Parent not found")
+
+    # Full update (no exclude_unset)
+    update_data = payload.model_dump()
+
+    if "phone_number" in update_data and update_data["phone_number"]:
+        exists = await db.execute(
+            select(Parent).where(
+                Parent.phone_number == update_data["phone_number"],
+                Parent.id != parent_id,
+                Parent.is_deleted.is_(False)
+            )
+        )
+        if exists.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="Phone number already exists")
+
+    for key, value in update_data.items():
+        setattr(parent, key, value)
+
+    await db.commit()
+    await db.refresh(parent)
+    return parent
+
+
 @router.delete("/{parent_id}", status_code=204)
 async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
+    # 1. Find Parent
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -93,14 +123,23 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
+    # 2. Soft Delete Parent
     await parent.soft_delete(db)
+
+    # 3. Cascade Soft Delete: Find and delete associated students
+    students_result = await db.execute(
+        select(Student).where(Student.parent_id == parent_id, Student.is_deleted.is_(False))
+    )
+    students = students_result.scalars().all()
+
+    for student in students:
+        await student.soft_delete(db)
 
     return None
 
 
 @router.post("/{parent_id}/restore", response_model=ParentResponse)
 async def restore_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-
     result = await db.execute(select(Parent).where(Parent.id == parent_id))
     parent = result.scalar_one_or_none()
 
