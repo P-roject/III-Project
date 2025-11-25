@@ -1,38 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
-
 from ..model import Parent
-# ایمپورت کردن مدل Student برای حذف آبشاری
 from Student.model import Student
+from ..serializer import ParentSchema
 from ..serializer.ParentSchema import ParentCreate, ParentUpdate, ParentResponse
 from Database.database import get_db
 
 router = APIRouter(prefix="/parents", tags=["parents"])
 
 
-@router.post("/", response_model=ParentResponse, status_code=201)
-async def create_parent(payload: ParentCreate, db: AsyncSession = Depends(get_db)):
-    exists = await db.execute(
-        select(Parent).where(
-            Parent.phone_number == payload.phone_number,
-            Parent.is_deleted.is_(False)
-        )
+@router.post("/", response_model=ParentSchema.ParentResponse, status_code=status.HTTP_201_CREATED)
+async def create_parent(parent: ParentSchema.ParentCreate, db: AsyncSession = Depends(get_db)):
+    new_parent = Parent(
+        name=parent.name,
+        phone_number=parent.phone_number
     )
-    if exists.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Phone number already exists")
-
-    parent = Parent(**payload.model_dump())
-    db.add(parent)
+    db.add(new_parent)
     await db.commit()
-    await db.refresh(parent)
-    return parent
+    await db.refresh(new_parent)  # or using select instead of refresh
+    return new_parent
 
 
 @router.get("/", response_model=List[ParentResponse])
 async def get_parents(db: AsyncSession = Depends(get_db)):
-    # تغییر: حذف شرط is_deleted
     result = await db.execute(
         select(Parent)
         .order_by(Parent.id.desc())
@@ -42,7 +34,6 @@ async def get_parents(db: AsyncSession = Depends(get_db)):
 
 @router.get("/{parent_id}", response_model=ParentResponse)
 async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-    # تغییر: حذف شرط is_deleted
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id)
     )
@@ -78,7 +69,6 @@ async def update_parent_full(parent_id: int, payload: ParentUpdate, db: AsyncSes
 
     update_data = payload.model_dump(exclude_unset=False)
 
-    # جلوگیری از Null شدن فیلدهای اجباری
     if update_data.get("name") is None or update_data.get("phone_number") is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -93,9 +83,9 @@ async def update_parent_full(parent_id: int, payload: ParentUpdate, db: AsyncSes
     return parent
 
 
-@router.delete("/{parent_id}", status_code=204)
+@router.delete("/{parent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-    # 1. Find Parent
+
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -104,10 +94,10 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
-    # 2. Soft Delete Parent
+
     await parent.soft_delete(db)
 
-    # 3. Cascade Soft Delete: Find and delete associated students
+
     students_result = await db.execute(
         select(Student).where(Student.parent_id == parent_id, Student.is_deleted.is_(False))
     )
@@ -121,6 +111,7 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
 
 @router.post("/{parent_id}/restore", response_model=ParentResponse)
 async def restore_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
+    # Include deleted
     result = await db.execute(select(Parent).where(Parent.id == parent_id))
     parent = result.scalar_one_or_none()
 
@@ -129,5 +120,7 @@ async def restore_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
 
     if parent.is_deleted:
         await parent.restore(db)
+        await db.commit()
+        await db.refresh(parent)
 
     return parent

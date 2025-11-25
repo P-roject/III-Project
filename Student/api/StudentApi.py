@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from typing import List
 from ..model import Student
+from ..serializer import StudentSchema
 from ..serializer.StudentSchema import StudentCreate, StudentUpdate, StudentResponse
 from Database.database import get_db
 from Parent.model import Parent
@@ -13,9 +14,6 @@ router = APIRouter(prefix="/students", tags=["students"])
 
 
 async def get_student_with_relations(db: AsyncSession, student_id: int):
-    """
-    یک تابع کمکی برای دریافت دانش‌آموز به همراه تمام روابط
-    """
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.parent), selectinload(Student.class_))
@@ -24,26 +22,25 @@ async def get_student_with_relations(db: AsyncSession, student_id: int):
     return result.scalar_one_or_none()
 
 
-@router.post("/", response_model=StudentResponse, status_code=201)
-async def create_student(payload: StudentCreate, db: AsyncSession = Depends(get_db)):
-    if payload.parent_id:
-        parent = await db.get(Parent, payload.parent_id)
-        if not parent or parent.is_deleted:
-            raise HTTPException(status_code=404, detail="Parent not found or deleted")
+@router.post("/", response_model=StudentSchema.StudentResponse, status_code=status.HTTP_201_CREATED)
+async def create_student(student: StudentSchema.StudentCreate, db: AsyncSession = Depends(get_db)):
+    new_student = Student(
+        name=student.name,
+        age=student.age,
+        grade=student.grade,
+        parent_id=student.parent_id,
+        class_id=student.class_id
+    )
+    db.add(new_student)
 
-    if payload.class_id:
-        cls = await db.get(Class, payload.class_id)
-        if not cls or cls.is_deleted:
-            raise HTTPException(status_code=404, detail="Class not found or deleted")
+    await db.flush()
+    new_id = new_student.id
 
-    student = Student(**payload.model_dump())
-    db.add(student)
     await db.commit()
 
-    # جهت اطمینان از لود شدن صحیح روابط در لحظه ساخت
-    db.expire(student)
-    refreshed_student = await get_student_with_relations(db, student.id)
-    return refreshed_student
+    fetched_student = await get_student_with_relations(db, new_id)
+
+    return fetched_student
 
 
 @router.get("/", response_model=List[StudentResponse])
@@ -67,14 +64,12 @@ async def get_student(student_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/{student_id}", response_model=StudentResponse)
 async def update_student_partial(student_id: int, payload: StudentUpdate, db: AsyncSession = Depends(get_db)):
-    # 1. پیدا کردن دانش‌آموز
     student = await get_student_with_relations(db, student_id)
     if not student or student.is_deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Student not found")
 
     update_data = payload.model_dump(exclude_unset=True)
 
-    # 2. بررسی اعتبارسنجی
     if "parent_id" in update_data and update_data["parent_id"] is not None:
         parent_result = await db.execute(
             select(Parent).where(Parent.id == update_data["parent_id"], Parent.is_deleted.is_(False)))
@@ -87,18 +82,12 @@ async def update_student_partial(student_id: int, payload: StudentUpdate, db: As
         if not class_result.scalars().first():
             raise HTTPException(status_code=404, detail="Class not found")
 
-    # 3. اعمال تغییرات
     for key, value in update_data.items():
         setattr(student, key, value)
 
     await db.commit()
 
-    # === اصلاح مهم برای نمایش روابط ===
-    # آبجکت فعلی در مموری پایتون هنوز روابط قدیمی (یا نال) را دارد.
-    # با این دستور به SQLAlchmey می‌گوییم این آبجکت را "منقضی" کن.
     db.expire(student)
-
-    # حالا دوباره از دیتابیس می‌خوانیم تا روابط جدید (parent/class) لود شوند
     refreshed_student = await get_student_with_relations(db, student_id)
     return refreshed_student
 
@@ -136,13 +125,12 @@ async def update_student_full(student_id: int, payload: StudentUpdate, db: Async
 
     await db.commit()
 
-    # === اصلاح مهم ===
     db.expire(student)
     refreshed_student = await get_student_with_relations(db, student_id)
     return refreshed_student
 
 
-@router.delete("/{student_id}", status_code=204)
+@router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def soft_delete_student(student_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Student).where(Student.id == student_id, Student.is_deleted.is_(False))
@@ -172,7 +160,6 @@ async def restore_student(student_id: int, db: AsyncSession = Depends(get_db)):
 
         await student.restore(db)
 
-        # برای restore هم بهتر است رفرش کنیم تا تاریخ‌های آپدیت شده درست برگردند
         db.expire(student)
         return await get_student_with_relations(db, student_id)
 

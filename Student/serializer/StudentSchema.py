@@ -35,9 +35,11 @@ class StudentResponse(BaseModel):
     grade: int
     is_active: bool
     is_deleted: bool
+
     # این فیلدها باید بتوانند Null باشند
     parent: Optional[ParentResponse] = None
     class_: Optional[ClassResponse] = None
+
     created_at_fa: str
     updated_at_fa: str
     deleted_at_fa: str | None = None

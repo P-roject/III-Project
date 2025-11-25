@@ -3,14 +3,10 @@ import random
 import string
 from httpx import AsyncClient
 
-# === IMPORT MODELS TO REGISTER TABLES ===
 # این ایمپورت‌ها ضروری هستند تا SQLAlchemy جداول را بشناسد
 from Parent.model import Parent
 from Class.model import Class
 from Student.model import Student
-
-
-# ========================================
 
 # --- Helper Functions ---
 def random_string(length=6):
@@ -103,12 +99,30 @@ async def test_04_create_student_full_chain(auth_client: AsyncClient):
 @pytest.mark.asyncio
 async def test_05_get_students_list(auth_client: AsyncClient):
     """تست دریافت لیست دانش‌آموزان"""
-    # ابتدا یک دانش‌آموز می‌سازیم
-    p_res = await auth_client.post("/parents/", json={"name": "P1", "phone_number": random_phone()})
-    s_payload = {"name": "S1", "age": 12, "grade": 6, "parent_id": p_res.json()["id"]}
-    await auth_client.post("/students/", json=s_payload)
+    # 1. ساخت والد (با نام طولانی معتبر)
+    p_payload = {"name": "Parent_List_Test", "phone_number": random_phone()}
+    p_res = await auth_client.post("/parents/", json=p_payload)
+    assert p_res.status_code == 201
+    parent_id = p_res.json()["id"]
 
-    # دریافت لیست
+    # 2. ساخت کلاس (چون احتمالاً class_id اجباری است)
+    c_payload = {"name": "Class_List_Test", "teacher_name": "Teacher_List"}
+    c_res = await auth_client.post("/classes/", json=c_payload)
+    assert c_res.status_code == 201
+    class_id = c_res.json()["id"]
+
+    # 3. ساخت دانش‌آموز (با نام طولانی معتبر و تمام فیلدها)
+    s_payload = {
+        "name": "Student_List_Test",
+        "age": 12,
+        "grade": 6,
+        "parent_id": parent_id,
+        "class_id": class_id
+    }
+    s_res = await auth_client.post("/students/", json=s_payload)
+    assert s_res.status_code == 201, f"Student create failed: {s_res.text}"
+
+    # 4. دریافت لیست
     response = await auth_client.get("/students/")
     assert response.status_code == 200
     data = response.json()

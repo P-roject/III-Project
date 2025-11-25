@@ -18,6 +18,7 @@ class ParentResponse(BaseModel):
     phone_number: str
     is_active: bool
     is_deleted: bool
+
     created_at_fa: str
     updated_at_fa: str
     deleted_at_fa: str | None = None
