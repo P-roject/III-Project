@@ -2,13 +2,12 @@ import pytest
 import random
 import string
 from httpx import AsyncClient
-
-# این ایمپورت‌ها ضروری هستند تا SQLAlchemy جداول را بشناسد
 from Parent.model import Parent
 from Class.model import Class
 from Student.model import Student
 
-# --- Helper Functions ---
+
+
 def random_string(length=6):
     return ''.join(random.choices(string.ascii_letters, k=length))
 
@@ -18,7 +17,7 @@ def random_phone():
     return f"09{random.randint(100000000, 999999999)}"
 
 
-# --- Tests ---
+# Tests
 
 @pytest.mark.asyncio
 async def test_01_login_success(client: AsyncClient):

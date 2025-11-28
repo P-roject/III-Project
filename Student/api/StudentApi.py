@@ -14,9 +14,19 @@ router = APIRouter(prefix="/students", tags=["students"])
 
 
 async def get_student_with_relations(db: AsyncSession, student_id: int):
+    """
+    این تابع دانش‌آموز را به همراه والد و کلاس لود می‌کند.
+    نکته مهم: از Deep Loading استفاده شده تا لیست دانش‌آموزانِ والد و کلاس
+    نیز بارگذاری شوند تا از خطای MissingGreenlet در Pydantic جلوگیری شود.
+    """
     result = await db.execute(
         select(Student)
-        .options(selectinload(Student.parent), selectinload(Student.class_))
+        .options(
+            # لود کردن والد و سپس لود کردن لیست دانش‌آموزان آن والد
+            selectinload(Student.parent).selectinload(Parent.students),
+            # لود کردن کلاس و سپس لود کردن لیست دانش‌آموزان آن کلاس
+            selectinload(Student.class_).selectinload(Class.students)
+        )
         .where(Student.id == student_id)
     )
     return result.scalar_one_or_none()
@@ -38,6 +48,7 @@ async def create_student(student: StudentSchema.StudentCreate, db: AsyncSession 
 
     await db.commit()
 
+    # بازیابی مجدد با روابط کامل
     fetched_student = await get_student_with_relations(db, new_id)
 
     return fetched_student
@@ -45,9 +56,16 @@ async def create_student(student: StudentSchema.StudentCreate, db: AsyncSession 
 
 @router.get("/", response_model=List[StudentResponse])
 async def get_students(db: AsyncSession = Depends(get_db)):
+    """
+    لیست همه دانش‌آموزان را برمی‌گرداند.
+    روابط والد و کلاس به صورت Deep Load بارگذاری می‌شوند.
+    """
     result = await db.execute(
         select(Student)
-        .options(selectinload(Student.parent), selectinload(Student.class_))
+        .options(
+            selectinload(Student.parent).selectinload(Parent.students),
+            selectinload(Student.class_).selectinload(Class.students)
+        )
         .where(Student.is_deleted.is_(False))
         .order_by(Student.id.desc())
     )

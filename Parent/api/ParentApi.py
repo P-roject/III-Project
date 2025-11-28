@@ -7,6 +7,7 @@ from Student.model import Student
 from ..serializer import ParentSchema
 from ..serializer.ParentSchema import ParentCreate, ParentUpdate, ParentResponse
 from Database.database import get_db
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/parents", tags=["parents"])
 
@@ -27,6 +28,7 @@ async def create_parent(parent: ParentSchema.ParentCreate, db: AsyncSession = De
 async def get_parents(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Parent)
+        .options(selectinload(Parent.students))
         .order_by(Parent.id.desc())
     )
     return result.scalars().all()
@@ -35,7 +37,9 @@ async def get_parents(db: AsyncSession = Depends(get_db)):
 @router.get("/{parent_id}", response_model=ParentResponse)
 async def get_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Parent).where(Parent.id == parent_id)
+        select(Parent)
+        .options(selectinload(Parent.students))
+        .where(Parent.id == parent_id)
     )
     parent = result.scalar_one_or_none()
     if not parent:
@@ -85,7 +89,6 @@ async def update_parent_full(parent_id: int, payload: ParentUpdate, db: AsyncSes
 
 @router.delete("/{parent_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-
     result = await db.execute(
         select(Parent).where(Parent.id == parent_id, Parent.is_deleted.is_(False))
     )
@@ -94,9 +97,7 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
-
     await parent.soft_delete(db)
-
 
     students_result = await db.execute(
         select(Student).where(Student.parent_id == parent_id, Student.is_deleted.is_(False))
@@ -111,15 +112,31 @@ async def soft_delete_parent(parent_id: int, db: AsyncSession = Depends(get_db))
 
 @router.post("/{parent_id}/restore", response_model=ParentResponse)
 async def restore_parent(parent_id: int, db: AsyncSession = Depends(get_db)):
-    # Include deleted
-    result = await db.execute(select(Parent).where(Parent.id == parent_id))
+    # Include deleted to find it
+    result = await db.execute(
+        select(Parent)
+        .options(selectinload(Parent.students))  # لود می‌کنیم تا در ریسپانس نهایی باشد
+        .where(Parent.id == parent_id)
+    )
     parent = result.scalar_one_or_none()
 
     if not parent:
         raise HTTPException(status_code=404, detail="Parent not found")
 
     if parent.is_deleted:
+        # 1. بازیابی والد
         await parent.restore(db)
+
+        # 2. بازیابی خودکار دانش‌آموزان زیرمجموعه (Cascading Restore)
+        # پیدا کردن دانش‌آموزان حذف شده‌ی این والد
+        students_result = await db.execute(
+            select(Student).where(Student.parent_id == parent_id, Student.is_deleted.is_(True))
+        )
+        deleted_students = students_result.scalars().all()
+
+        for student in deleted_students:
+            await student.restore(db)
+
         await db.commit()
         await db.refresh(parent)
 

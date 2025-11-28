@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from typing import Optional
-from Parent.serializer.ParentSchema import ParentResponse
-from Class.serializer.ClassSchema import ClassResponse as ClassResponse
+# ایمپورت کردن نسخه‌های Simple
+from Parent.serializer.ParentSchema import ParentResponseSimple
+from Class.serializer.ClassSchema import ClassResponseSimple
 
 
 class StudentCreate(BaseModel):
@@ -36,9 +37,9 @@ class StudentResponse(BaseModel):
     is_active: bool
     is_deleted: bool
 
-    # این فیلدها باید بتوانند Null باشند
-    parent: Optional[ParentResponse] = None
-    class_: Optional[ClassResponse] = None
+    # استفاده از مدل‌های ساده (بدون لیست students) برای جلوگیری از ارور MissingGreenlet
+    parent: Optional[ParentResponseSimple] = None
+    class_: Optional[ClassResponseSimple] = None
 
     created_at_fa: str
     updated_at_fa: str

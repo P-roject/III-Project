@@ -6,6 +6,7 @@ from ..model import Class
 from Student.model import Student
 from ..serializer.ClassSchema import ClassCreate, ClassUpdate, ClassResponse
 from Database.database import get_db
+from sqlalchemy.orm import selectinload
 
 router = APIRouter(prefix="/classes", tags=["classes"])
 
@@ -23,6 +24,7 @@ async def create_class(payload: ClassCreate, db: AsyncSession = Depends(get_db))
 async def get_classes(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Class)
+        .options(selectinload(Class.students))
         .order_by(Class.id.desc())
     )
     return result.scalars().all()
@@ -31,7 +33,9 @@ async def get_classes(db: AsyncSession = Depends(get_db)):
 @router.get("/{class_id}", response_model=ClassResponse)
 async def get_class(class_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(Class).where(Class.id == class_id)
+        select(Class)
+        .options(selectinload(Class.students))
+        .where(Class.id == class_id)
     )
     cls = result.scalar_one_or_none()
     if not cls:
@@ -91,7 +95,7 @@ async def soft_delete_class(class_id: int, db: AsyncSession = Depends(get_db)):
 
     await cls.soft_delete(db)
 
-    # Cascade Soft Delete: Find and delete associated students
+    # Cascade Soft Delete
     students_result = await db.execute(
         select(Student).where(Student.class_id == class_id, Student.is_deleted.is_(False))
     )
@@ -105,12 +109,30 @@ async def soft_delete_class(class_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/{class_id}/restore", response_model=ClassResponse)
 async def restore_class(class_id: int, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Class).where(Class.id == class_id))
+    result = await db.execute(
+        select(Class)
+        .options(selectinload(Class.students))  # لود کردن برای پاسخ نهایی
+        .where(Class.id == class_id)
+    )
     cls = result.scalar_one_or_none()
 
     if not cls:
         raise HTTPException(status_code=404, detail="Class not found")
 
     if cls.is_deleted:
+        # 1. بازیابی کلاس
         await cls.restore(db)
+
+        # 2. بازیابی خودکار دانش‌آموزان زیرمجموعه (Cascading Restore)
+        students_result = await db.execute(
+            select(Student).where(Student.class_id == class_id, Student.is_deleted.is_(True))
+        )
+        deleted_students = students_result.scalars().all()
+
+        for student in deleted_students:
+            await student.restore(db)
+
+        await db.commit()  # کامیت نهایی برای کلاس و همه دانش‌آموزان
+        await db.refresh(cls)
+
     return cls
